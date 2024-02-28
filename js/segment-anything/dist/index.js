@@ -2638,17 +2638,14 @@ async function hasFp16() {
     }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    if (config.provider == 'webgpu') {
-        hasFp16().then((fp16) => {
-            if (fp16) {
-                main();
-            } else {
-                log("Your GPU or Browser doesn't support webgpu/f16");
-            }
-        });
+document.addEventListener("DOMContentLoaded", async () => {
+    const fp16 = await hasFp16();
+    if (config.provider == 'webgpu' && !fp16) {
+        log("Your GPU or Browser doesn't support webgpu/f16");
+    } else if (config.provider == 'webnn' && !("ml" in navigator) && typeof MLGraphBuilder == 'undefined') {
+        log("Your Browser doesn't support WebNN");
     } else {
-        main();
+        await main();
     }
 });
 

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 //
-// An example how to run segment-anything with webgpu in onnxruntime-web.
+// An example how to run segment-anything with webgpu and webnn in onnxruntime-web.
 //
 
 import ort from 'onnxruntime-web/webgpu';
@@ -19,11 +19,13 @@ const MODELS = {
         {
             name: "sam-b-encoder",
             url: "https://huggingface.co/schmuell/sam-b-fp16/resolve/main/sam_vit_b_01ec64.encoder-fp16.onnx",
+            // url: "./models/sam_vit_b_01ec64.encoder-fp16.onnx",
             size: 180,
         },
         {
             name: "sam-b-decoder",
             url: "https://huggingface.co/schmuell/sam-b-fp16/resolve/main/sam_vit_b_01ec64.decoder.onnx",
+            // url: "./models/sam_vit_b_01ec64.decoder.onnx",
             size: 17,
         },
     ],
@@ -31,11 +33,13 @@ const MODELS = {
         {
             name: "sam-b-encoder-int8",
             url: "https://huggingface.co/schmuell/sam-b-fp16/resolve/main/sam_vit_b-encoder-int8.onnx",
+            // url: "./models/sam_vit_b-encoder-int8.onnx",
             size: 108,
         },
         {
             name: "sam-b-decoder-int8",
             url: "https://huggingface.co/schmuell/sam-b-fp16/resolve/main/sam_vit_b-decoder-int8.onnx",
+            // url: "./models/sam_vit_b-decoder-int8.onnx",
             size: 5,
         },
     ],
@@ -343,6 +347,17 @@ async function load_models(models) {
                     }
                 },
             };
+            // sam-b-encoder for WebNN is slow, as which contains 24 Einsum nodes,
+            // WebNN EP is working on Einsum op implementation at https://github.com/microsoft/onnxruntime/pull/19558.
+            if (config.provider == 'webnn') {
+                opt.executionProviders = [{
+                    name: "webnn",
+                    deviceType: "gpu",
+                }];
+                opt.freeDimensionOverrides = {
+                    num_points: 1,
+                };
+            }
             const model_bytes = await fetchAndCache(model.url, model.name);
             const extra_opt = model.opt || {};
             const sess_opt = { ...opt, ...extra_opt };
@@ -405,11 +420,15 @@ async function hasFp16() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    hasFp16().then((fp16) => {
-        if (fp16) {
-            main();
-        } else {
-            log("Your GPU or Browser doesn't support webgpu/f16");
-        }
-    });
+    if (config.provider == 'webgpu') {
+        hasFp16().then((fp16) => {
+            if (fp16) {
+                main();
+            } else {
+                log("Your GPU or Browser doesn't support webgpu/f16");
+            }
+        });
+    } else {
+        main();
+    }
 });

@@ -1,11 +1,3 @@
-// function softmax(x, axis=-1) {
-//     let max_elem = np.max(x, axis=axis, keepdims=true);
-//     let x_ = x.sub(max_elem);
-//     let exp = x_.exp();
-//     let softmax_scores = exp.div(exp.sum(axis=axis, keepdims=true));
-//     return softmax_scores;
-// }
-
 function random_choice(array, probabilities) {
     const random_value = Math.random();
     let cumulative_probability = 0;

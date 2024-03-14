@@ -4,15 +4,14 @@
 // An example how to run whisper in onnxruntime-web.
 //
 
-import {log, Whisper} from './whisper.js';
+import {Whisper} from './whisper.js';
+import {log} from './utils.js';
 
 const kSampleRate = 16000;
 const kIntervalAudio_ms = 1000;
 const kSteps = kSampleRate * 30;
 const kDelay = 100;
 
-// ort session
-// let sess;
 // whisper class
 let whisper;
 

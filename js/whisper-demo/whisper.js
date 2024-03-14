@@ -3,11 +3,7 @@ import { AutoProcessor, AutoTokenizer } from 'https://cdn.jsdelivr.net/npm/@xeno
 //'@xenova/transformers';
 import { get_new_tokens } from './generation_utils.js';
 import { attention_mask_update, cache_update } from './post_processing.js';
-
-export function log(i) {
-    console.log(i);
-    document.getElementById('status').innerText += `\n[${performance.now().toFixed(2)}] ` + i;
-}
+import {log, getModelOPFS} from './utils.js';
 
 // wrapper around onnxruntime and model
 export class Whisper {
@@ -53,7 +49,8 @@ export class Whisper {
         // options.logSeverityLevel = 0;
         for (let name of Object.keys(this.models)) {
             try {
-                this.models[name]['sess'] = await ort.InferenceSession.create(this.url + this.models[name]['url'], options);
+                const modelBuffer = await getModelOPFS(name, this.url + this.models[name]['url'], false);
+                this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
                 log(`Model ${this.models[name]['url']} loaded`);
             } catch (e) {
                 log(`Error: ${e}`);

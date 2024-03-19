@@ -16,6 +16,7 @@ const kDelay = 100;
 let whisper;
 
 let provider = 'webnn';
+let dataType = 'float32';
 
 // audio context
 var context = null;
@@ -31,17 +32,20 @@ let transcribe;
 let progress;
 let audio_src;
 
-function getProvider() {
+function updateConfig() {
     const query = window.location.search.substring('1');
     const providers = ['webnn', 'webgpu', 'wasm'];
+    const dataTypes = ['float32', 'float16'];
     let vars = query.split('&');
     for (let i = 0; i < vars.length; i++) {
         let pair = vars[i].split('=');
         if (pair[0] == 'provider' && providers.includes(pair[1])) {
-            return pair[1];
+            provider = pair[1];
+        }
+        if (pair[0] == 'dataType' && dataTypes.includes(pair[1])) {
+            dataType = pair[1];
         }
     }
-    return provider;
 }
 
 // transcribe active
@@ -67,8 +71,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     progress = document.getElementById('progress');
     transcribe.disabled = true;
     progress.parentNode.style.display = "none";
-
-    // audio_src.src = "colorado_river_crisis_is_hitting_home.mp3";
+    updateConfig();
 
     // click on Record
     record.addEventListener("click", (e) => {
@@ -92,10 +95,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         let target = evt.target || window.event.src, files = target.files;
         audio_src.src = URL.createObjectURL(files[0]);
     }
-
+    log(`Execution provider: ${provider}`);
     log("loading model");
     try {
-        whisper = new Whisper('https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/', getProvider());
+        whisper = new Whisper('https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/', provider, dataType);
+        // whisper = new Whisper('./models/', provider, dataType);
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();

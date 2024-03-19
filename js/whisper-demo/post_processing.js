@@ -1,4 +1,5 @@
-export function cache_update(decoder_input, past_key_values, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0, cache_precision = Float32Array) {
+export function cache_update(decoder_input, past_key_values, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0, data_type = 'float32') {
+    const cache_precision = data_type == 'float32' ? Float32Array : Uint16Array;
     // at the output of the first inference model, we perform right padding on kv cache
     if (inf_iter === 0) {
         // perform padding for each attention head
@@ -12,13 +13,7 @@ export function cache_update(decoder_input, past_key_values, inf_iter, max_seque
             // seq len dim of KV cache is same as max seq len
             // output of decoder non cache is in fp16 precision,
             // so we create the padded KV in same precision
-            
-            // const nop_key = new cache_precision(max_sequence_length - num_init_tokens - 1).fill(0);
-            // // do right padding
-            // const padded_key = new cache_precision([...past_key_values[`present_key_values.${i}.decoder.key`].cpuData, ...nop_key]);
-            // decoder_input[`past_key_values.${i}.decoder.key`] = new ort.Tensor('float32', padded_key, [1,8,127,64]);
-
-            decoder_input[`past_key_values.${i}.decoder.key`] = new ort.Tensor('float32', new cache_precision(8*127*64).fill(0), [1,8,127,64]);
+            decoder_input[`past_key_values.${i}.decoder.key`] = new ort.Tensor(data_type, new cache_precision(8*127*64).fill(0), [1,8,127,64]);
             for (let h = 0; h < 8; h ++) {
                 for (let d = 0; d < 64; d++) {
                     for (let s = 0; s < 4; s++) {
@@ -32,11 +27,7 @@ export function cache_update(decoder_input, past_key_values, inf_iter, max_seque
 
             // we want the layout of value cache as NCWH to avoid implicit transpose
             // As seq len is H dimension, do right padding in 3rd axis
-            // let nop_value = new cache_precision(max_sequence_length - num_init_tokens - 1).fill(0);
-            // let padded_value = new cache_precision([...past_key_values[`present_key_values.${i}.decoder.value`].cpuData, ...nop_value]);
-            // decoder_input[`past_key_values.${i}.decoder.value`] = new ort.Tensor('float32', padded_value, [1,8,127,64]);
-
-            decoder_input[`past_key_values.${i}.decoder.value`] = new ort.Tensor('float32', new cache_precision(8*127*64).fill(0), [1,8,127,64]);
+            decoder_input[`past_key_values.${i}.decoder.value`] = new ort.Tensor(data_type, new cache_precision(8*127*64).fill(0), [1,8,127,64]);
             for (let h = 0; h < 8; h ++) {
                 for (let d = 0; d < 64; d++) {
                     for (let s = 0; s < 4; s++) {

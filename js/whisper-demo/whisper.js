@@ -3,13 +3,14 @@ import { AutoProcessor, AutoTokenizer } from 'https://cdn.jsdelivr.net/npm/@xeno
 //'@xenova/transformers';
 import { get_new_tokens } from './generation_utils.js';
 import { attention_mask_update, cache_update } from './post_processing.js';
-import {log, getModelOPFS} from './utils.js';
+import {log, getModelOPFS, convertToFloat32Array, convertToUint16Array} from './utils.js';
 
 // wrapper around onnxruntime and model
 export class Whisper {
-    constructor(url, provider) {
+    constructor(url, provider, dataType) {
         this.url = url;
         this.provider = provider;
+        this.dataType = dataType;
         ort.env.wasm.simd = true;
 
         this.models = {
@@ -23,8 +24,6 @@ export class Whisper {
         this.num_init_tokens = 4;
         // Whisper was trained using 16000 Hz as sampling rate, fixing this value for dataset preparation
         this.sampling_rate = 16000;
-        // set precision of different inputs
-        this.cache_precision = Float32Array;
         this.processor = null;
         this.tokenizer = null;
     }
@@ -49,9 +48,11 @@ export class Whisper {
         // options.logSeverityLevel = 0;
         for (let name of Object.keys(this.models)) {
             try {
-                const modelBuffer = await getModelOPFS(name, this.url + this.models[name]['url'], false);
+                let url = this.url + this.models[name]['url'];
+                if (this.dataType == 'float16') url = url.replace('.onnx', '_fp16.onnx');
+                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, true);
                 this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
-                log(`Model ${this.models[name]['url']} loaded`);
+                log(`Model ${url} loaded`);
             } catch (e) {
                 log(`Error: ${e}`);
             }
@@ -65,8 +66,16 @@ export class Whisper {
         const { input_features } = await this.processor(audio_data);
         // -----------------------------------ENCODER INFERENCE-----------------------------------------
         // run encoder to get output
+        let encoder_inputs = {
+            type: this.dataType,
+            data: input_features.data,
+            dims: input_features.dims,
+        };
+        if (this.dataType == 'float16') {
+            encoder_inputs.data = convertToUint16Array(encoder_inputs.data);
+        }
         const encoder_hidden_states = await this.models['encoder']['sess'].run({
-            input_features: new ort.Tensor(input_features.type, input_features.data, input_features.dims)
+            input_features: new ort.Tensor(encoder_inputs.type, encoder_inputs.data, encoder_inputs.dims)
         });
         // -----------------------------------DECODER 1ST INFERENCE-----------------------------------------
         // create list of tokens for english language and transcribe task, no need of time stamps
@@ -83,8 +92,11 @@ export class Whisper {
         // run the first inference which generates SA and CA KV cache
         const decoder_output = await this.models['decoder']['sess'].run(decoder_input);
 
-        const logits = decoder_output['logits']['cpuData'];
+        let logits = decoder_output['logits']['cpuData'];
 
+        if (this.dataType == 'float16') {
+            logits = convertToFloat32Array(logits);
+        }
         // find out the token with highest probability, cast INT64 to INT32
         const new_token = get_new_tokens(logits, [1, 4, 51865]);
 
@@ -120,7 +132,7 @@ export class Whisper {
             this.max_sequence_length,
             this.num_init_tokens,
             this.num_init_tokens,
-            this.cache_precision);
+            this.dataType);
 
         const position_ids = new Int32Array(decoder_input['position_ids'].cpuData.buffer);
         // run complete inference for every item in dataset
@@ -128,7 +140,11 @@ export class Whisper {
             const decoder_cached_output = await this.models['decoder_cached']['sess'].run(decoder_input);
 
             // find out the token with highest probability, cast INT64 to INT32
-            const new_token = get_new_tokens(decoder_cached_output['logits']['cpuData'], [1, 1, 51865]);
+            let logits = decoder_cached_output['logits']['cpuData'];
+            if (this.dataType == 'float16') {
+                logits = convertToFloat32Array(logits);
+            }
+            const new_token = get_new_tokens(logits, [1, 1, 51865]);
 
             // add token to final buffer
             tokens = tokens.concat(new_token);
@@ -143,7 +159,7 @@ export class Whisper {
             // update mask using position id
             attention_mask_update(decoder_input['attention_mask'].cpuData, i, this.max_sequence_length, this.num_init_tokens, position_ids[0]);
             // modify the kv cache in place
-            cache_update(decoder_input, decoder_cached_output, i, this.max_sequence_length, this.num_init_tokens, position_ids[0]);
+            cache_update(decoder_input, decoder_cached_output, i, this.max_sequence_length, this.num_init_tokens, position_ids[0], this.dataType);
             // break if the new token is eos_token_id: 50257 (end of sequence)
             if (new_token == 50257) {
                 break;

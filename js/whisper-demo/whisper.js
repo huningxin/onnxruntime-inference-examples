@@ -45,12 +45,25 @@ export class Whisper {
                 deviceType: 'gpu',
             }],
         };
-        // options.logSeverityLevel = 0;
+
         for (let name of Object.keys(this.models)) {
             try {
+                if (name == 'encoder' && this.dataType == 'float16') {
+                    // encoder fp16 model has precision lose issue,
+                    // if fallback ReduceMean and Pow ops to CPU EP (run in fp32),
+                    // precision issue gone.
+                    options.executionProviders = [{name: 'wasm'}];
+                    // options.logSeverityLevel = 0;
+                } else {
+                    options.executionProviders = [{
+                        name: this.provider,
+                        deviceType: 'gpu',
+                    }];
+                    // options.logSeverityLevel = 3;
+                }
                 let url = this.url + this.models[name]['url'];
                 if (this.dataType == 'float16') url = url.replace('.onnx', '_fp16.onnx');
-                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, true);
+                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
                 this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
                 log(`Model ${url} loaded`);
             } catch (e) {
@@ -74,7 +87,7 @@ export class Whisper {
         if (this.dataType == 'float16') {
             encoder_inputs.data = convertToUint16Array(encoder_inputs.data);
         }
-        const encoder_hidden_states = await this.models['encoder']['sess'].run({
+        const { last_hidden_state } = await this.models['encoder']['sess'].run({
             input_features: new ort.Tensor(encoder_inputs.type, encoder_inputs.data, encoder_inputs.dims)
         });
         // -----------------------------------DECODER 1ST INFERENCE-----------------------------------------
@@ -86,7 +99,7 @@ export class Whisper {
         const decoder_input = {
             'input_ids': new ort.Tensor('int32', new Int32Array(tokens), [1, 4]),
             'attention_mask': new ort.Tensor('int32', new Int32Array(attention_mask), [1, 4]),
-            'encoder_hidden_states': encoder_hidden_states['last_hidden_state'],
+            'encoder_hidden_states': last_hidden_state,
         };
 
         // run the first inference which generates SA and CA KV cache

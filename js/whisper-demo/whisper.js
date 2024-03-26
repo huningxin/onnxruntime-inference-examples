@@ -48,22 +48,13 @@ export class Whisper {
 
         for (let name of Object.keys(this.models)) {
             try {
-                if (name == 'encoder' && this.dataType == 'float16') {
-                    // encoder fp16 model has precision lose issue,
-                    // if fallback ReduceMean and Pow ops to CPU EP (run in fp32),
-                    // precision issue gone.
-                    options.executionProviders = [{name: 'wasm'}];
-                    // options.logSeverityLevel = 0;
-                } else {
-                    options.executionProviders = [{
-                        name: this.provider,
-                        deviceType: 'gpu',
-                    }];
-                    // options.logSeverityLevel = 3;
-                }
                 let url = this.url + this.models[name]['url'];
-                if (this.dataType == 'float16') url = url.replace('.onnx', '_fp16.onnx');
-                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
+                if (this.dataType == 'float16') {
+                    url = url.replace('.onnx', '_fp16_layernorm.onnx');
+                } else {
+                    url = url.replace('.onnx', '_layernorm.onnx');
+                }
+                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, true);
                 this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
                 log(`Model ${url} loaded`);
             } catch (e) {

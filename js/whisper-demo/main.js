@@ -148,7 +148,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();
-        log("Ready to transcribe...")
+        log("Ready to transcribe...");
         ready();
         if (!context) {
             throw new Error("no AudioContext, make sure domain has access to Microphone");
@@ -340,7 +340,7 @@ async function processAudioBuffer() {
     lastTransCompleted = false;
     const start = performance.now();
     const ret = await whisper.run(audioChunks.shift(), kSampleRate);
-    console.log(`2 sec audio transcription time: ${((performance.now() - start) / 1000).toFixed(2)}sec`);
+    console.log(`${chunkLength} sec audio transcription time: ${((performance.now() - start) / 1000).toFixed(2)}sec`);
     lastTransCompleted = true;
     // ignore slient, inaudible audio, i.e. '[BLANK_AUDIO]'
     if (!blacklistTags.includes(ret)) {

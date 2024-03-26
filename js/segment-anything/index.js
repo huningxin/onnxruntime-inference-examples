@@ -4,8 +4,6 @@
 // An example how to run segment-anything with webgpu and webnn in onnxruntime-web.
 //
 
-import ort from 'onnxruntime-web/webgpu';
-
 // the image size on canvas
 const MAX_WIDTH = 500;
 const MAX_HEIGHT = 500;
@@ -47,7 +45,7 @@ const MODELS = {
 
 const config = getConfig();
 
-ort.env.wasm.wasmPaths = 'dist/';
+// ort.env.wasm.wasmPaths = 'dist/';
 ort.env.wasm.numThreads = config.threads;
 // ort.env.wasm.proxy = config.provider == "wasm";
 
@@ -73,7 +71,7 @@ function getConfig() {
     const query = window.location.search.substring(1);
     var config = {
         model: "sam_b",
-        provider: "webgpu",
+        provider: "webnn",
         device: "gpu",
         threads: "1",
     };

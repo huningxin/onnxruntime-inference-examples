@@ -54,7 +54,7 @@ export class Whisper {
                 } else {
                     url = url.replace('.onnx', '_layernorm.onnx');
                 }
-                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, true);
+                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
                 this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
                 log(`Model ${url} loaded`);
             } catch (e) {
@@ -85,6 +85,7 @@ export class Whisper {
         // create list of tokens for english language and transcribe task, no need of time stamps
         // TODO: CHANGE FROM HARDCODED VALUES
         let tokens = [50258, 50259, 50359, 50363];
+        // let tokens = [50258, 50259, 50359, 50364]; // keep timestep token
         const attention_mask = [1, 1, 1, 1];
         // create decoder input for the first inference
         const decoder_input = {
@@ -172,10 +173,6 @@ export class Whisper {
 
         // add token to sentence decode time
         const sentence = await this.tokenizer.decode(tokens, { skip_special_tokens: true });
-
-        // TODO
-        // norm_ref = self.processor.tokenizer._normalize(input_data['reference']);
-        // norm_ov = self.processor.tokenizer._normalize(sentence);
         return sentence;
     }
 }

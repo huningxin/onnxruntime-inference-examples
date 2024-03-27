@@ -32,12 +32,26 @@ let audio_src;
 let textarea;
 
 // for audio capture
-// check if last transcription is completed, to avoid race condition
-let lastTransCompleted = true;
+// This enum states the current speech state.
+const SpeechStates = {
+    UNINITIALIZED: 0,
+    PROCESSING: 1,
+    PAUSED: 2,
+    FINISHED: 3,
+};
+let speechState = SpeechStates.UNINITIALIZED;
+
 let streamingNode = null;
 let sourceNode = null;
 let audioChunks = [];
-const chunkLength = 2; // audio chunk length in sec
+let audioChunksIndex = 0;
+let concatenatedAudio = null;
+let chunkLength = 2; // audio chunk length in sec
+let maxChunkLength = 10; // max audio length for an audio processing
+// check if last transcription is completed, to avoid race condition
+let isLastTransCompleted = false;
+let isProcessing = false;
+let speechToText = '';
 
 const blacklistTags = [
     '[inaudible]',
@@ -64,6 +78,12 @@ function updateConfig() {
         }
         if (pair[0] == 'dataType' && dataTypes.includes(pair[1])) {
             dataType = pair[1];
+        }
+        if (pair[0] == 'chunkLength') {
+            chunkLength = parseInt(pair[1]);
+        }
+        if (pair[0] == 'maxChunkLength') {
+            maxChunkLength = parseInt(pair[1]);
         }
     }
 }
@@ -112,6 +132,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // click on Speech
     speech.addEventListener("click", async (e) => {
         if (e.currentTarget.innerText == "Start Speech") {
+            if (isProcessing) {
+                log('Last speech-to-text has not completed yet, try later...');
+                return;
+            }
             e.currentTarget.innerText = "Stop Speech";
             await startSpeech();
         }
@@ -267,12 +291,17 @@ function stopRecord() {
 // start speech
 async function startSpeech() {
     await captureAudioStream();
-    streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: false });
+    if (streamingNode != null) {
+        streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: false });
+    }
 }
 
 // stop speech
 async function stopSpeech() {
-    streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: true });
+    if (streamingNode != null) {
+        streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: true });
+        speechState = SpeechStates.PAUSED;
+    }
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());
     // }
@@ -322,7 +351,13 @@ async function captureAudioStream() {
         streamingNode.port.onmessage = async (e) => {
             if (e.data.message === 'START_TRANSCRIBE') {
                 audioChunks.push(e.data.buffer);
-                if (audioChunks.length == 1 && lastTransCompleted) {
+                // first time init the processAudioBuffer
+                if (speechState == SpeechStates.UNINITIALIZED) {
+                    speechState = SpeechStates.PROCESSING;
+                    await processAudioBuffer();
+                }
+                // new audio is coming, and no audio is processing
+                if (isLastTransCompleted && !isProcessing && (audioChunks.length > audioChunksIndex)) {
                     await processAudioBuffer();
                 }
             }
@@ -337,19 +372,50 @@ async function captureAudioStream() {
 }
 
 async function processAudioBuffer() {
-    lastTransCompleted = false;
+    isLastTransCompleted = false;
+    // meet maximum audio chunks, cut the last 30 sec audio, clear concatenatedAudio, audioChunksIndex
+    if (audioChunksIndex == maxChunkLength / chunkLength) {
+        audioChunks.splice(0, maxChunkLength / chunkLength);
+        concatenatedAudio = null;
+        audioChunksIndex = 0;
+    }
+
+    // pass the first audio chunk directly when audioChunksIndex is 0
+    if (audioChunksIndex == 0) {
+        concatenatedAudio = audioChunks[0];
+    } else {
+        // concat the previous audio chunks
+        concatenatedAudio = concatAudio(concatenatedAudio, audioChunks[audioChunksIndex]);
+    }
+
     const start = performance.now();
-    const ret = await whisper.run(audioChunks.shift(), kSampleRate);
-    console.log(`${chunkLength} sec audio transcription time: ${((performance.now() - start) / 1000).toFixed(2)}sec`);
-    lastTransCompleted = true;
+    const ret = await whisper.run(concatenatedAudio, kSampleRate);
+    console.log(`${concatenatedAudio.length / kSampleRate} sec audio transcription time: ${((performance.now() - start) / 1000).toFixed(2)}sec`);
     // ignore slient, inaudible audio, i.e. '[BLANK_AUDIO]'
-    if (!blacklistTags.includes(ret)) {
-        // append results to textarea
-        textarea.value += ret;
-        textarea.scrollTop = textarea.scrollHeight;
+    // if (!blacklistTags.includes(ret)) {
+    // append results to textarea
+    if (audioChunksIndex == (maxChunkLength / chunkLength - 1)) {
+        speechToText += ret; // append for each maxChunkLength/chunkLength iteration
+        textarea.value = speechToText;
+    } else {
+        textarea.value = speechToText + ret; // refresh in a maxChunkLength/chunkLength iteration
     }
-    // recusive audioBuffer in audioChunks
-    if (audioChunks.length != 0) {
+    textarea.scrollTop = textarea.scrollHeight;
+
+    audioChunksIndex++;
+    isLastTransCompleted = true;
+    if (audioChunks.length > audioChunksIndex && audioChunks.length != 0) {
+        // recusive audioBuffer in audioChunks
+        isProcessing = true;
         await processAudioBuffer();
+    } else {
+        isProcessing = false;
     }
+}
+
+function concatAudio(lastAudio, newAudio) {
+    let nextAudio = new Float32Array(lastAudio.length + newAudio.length);
+    nextAudio.set(lastAudio);
+    nextAudio.set(newAudio, lastAudio.length);
+    return nextAudio;
 }

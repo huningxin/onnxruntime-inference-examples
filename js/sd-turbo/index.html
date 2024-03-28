@@ -1,12 +1,15 @@
 <html>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet"
     integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0-dev.20240311-5479124834/ort.all.min.js"
+    integrity="sha512-PLzNYKoLrcpZ1P9u1c2qcaMfN0s6Ewfna8VnN2SANn6XAoRupBu3bwzmU68AO0C37gJMnRSUYYuCvX1576gWww=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script type="module">
     import { AutoTokenizer } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.js'
     window.AutoTokenizer = AutoTokenizer;
 </script>
 <!-- <script src="ort-web/js/web/dist/ort.all.js"></script> -->
-<script type="module" src="dist/index.js"></script>
+<script type="module" src="index.js"></script>
 
 <head>
     <title>Stable Diffusion Turbo</title>

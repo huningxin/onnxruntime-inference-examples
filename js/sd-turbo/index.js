@@ -1,10 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 //
-// An example how to run sd-turbo with webgpu in onnxruntime-web.
+// An example how to run sd-turbo with WebNN or WebGPU in onnxruntime-web.
 //
-
-import ort from 'onnxruntime-web/webgpu';
 
 function log(i) { console.log(i); document.getElementById('status').innerText += `\n${i}`; }
 
@@ -138,7 +136,7 @@ const models = {
     }
 }
 
-ort.env.wasm.wasmPaths = 'dist/';
+// ort.env.wasm.wasmPaths = 'dist/';
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.simd = true;
 

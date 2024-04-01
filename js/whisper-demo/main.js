@@ -395,7 +395,7 @@ async function processAudioBuffer() {
     // if (!blacklistTags.includes(ret)) {
     // append results to textarea
     if (audioChunksIndex == (maxChunkLength / chunkLength - 1)) {
-        speechToText += ret; // append for each maxChunkLength/chunkLength iteration
+        speechToText += ret + '\n'; // append for each maxChunkLength/chunkLength iteration
         textarea.value = speechToText;
     } else {
         textarea.value = speechToText + ret; // refresh in a maxChunkLength/chunkLength iteration

@@ -29,7 +29,6 @@ class StreamingProcessor extends AudioWorkletProcessor {
         if (this.stopProcessing) {
             // Do nothing, suspend the audio processing
         } else {
-            // TODO: Involve VAD to ignore slient audio early
             // inputs[0][0]'s length is 128
             for (let sample = 0; sample < inputs[0][0].length; sample++) {
                 const currentSample = inputs[0][0][sample];

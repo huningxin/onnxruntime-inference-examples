@@ -5,7 +5,8 @@
 //
 
 import { Whisper } from './whisper.js';
-import { log } from './utils.js';
+import { log, concatBuffer, concatBufferArray } from './utils.js';
+import VADBuilder, { VADMode, VADEvent } from "./vad/embedded.js";
 
 const kSampleRate = 16000;
 const kIntervalAudio_ms = 1000;
@@ -43,24 +44,34 @@ let speechState = SpeechStates.UNINITIALIZED;
 
 let streamingNode = null;
 let sourceNode = null;
-let audioChunks = [];
-let audioChunksIndex = 0;
-let concatenatedAudio = null;
-let chunkLength = 2; // audio chunk length in sec
-let maxChunkLength = 10; // max audio length for an audio processing
-// check if last transcription is completed, to avoid race condition
-let isLastTransCompleted = false;
-let isProcessing = false;
+let audioChunks = []; // member {isSubChunk: boolean, data: Float32Array}
+let subAudioChunks = [];
+let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
+let maxChunkLength = 1; // max audio length for an audio processing
+let silenceAudioCounter = 0;
+// check if last audio processing is completed, to avoid race condition
+let lastProcessingCompleted = true;
+// check if last speech processing is completed when restart speech
+let lastSpeechCompleted = true;
+
+
+// involve webrtcvad to detect voice activity
+let VAD = null;
+let vad = null;
+
+let singleAudioChunk = null; // one time audio process buffer
+let subAudioChunkLength = 0; // length of a sub audio chunk
 let speechToText = '';
+let subText = '';
 
 const blacklistTags = [
     '[inaudible]',
-    '[INAUDIBLE]',
-    '[BLANK_AUDIO]',
     ' [inaudible]',
-    ' [INAUDIBLE]',
-    ' [BLANK_AUDIO]',
     '[ Inaudible ]',
+    '[INAUDIBLE]',
+    ' [INAUDIBLE]',
+    '[BLANK_AUDIO]',
+    ' [BLANK_AUDIO]',
     ' [no audio]',
     '[no audio]',
     '[silent]',
@@ -78,9 +89,6 @@ function updateConfig() {
         }
         if (pair[0] == 'dataType' && dataTypes.includes(pair[1])) {
             dataType = pair[1];
-        }
-        if (pair[0] == 'chunkLength') {
-            chunkLength = parseInt(pair[1]);
         }
         if (pair[0] == 'maxChunkLength') {
             maxChunkLength = parseInt(pair[1]);
@@ -132,10 +140,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // click on Speech
     speech.addEventListener("click", async (e) => {
         if (e.currentTarget.innerText == "Start Speech") {
-            if (isProcessing) {
+            if (!lastSpeechCompleted) {
                 log('Last speech-to-text has not completed yet, try later...');
                 return;
             }
+            subText = '';
             e.currentTarget.innerText = "Stop Speech";
             await startSpeech();
         }
@@ -290,6 +299,7 @@ function stopRecord() {
 
 // start speech
 async function startSpeech() {
+    speechState = SpeechStates.PROCESSING;
     await captureAudioStream();
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: false });
@@ -301,6 +311,15 @@ async function stopSpeech() {
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: true });
         speechState = SpeechStates.PAUSED;
+    }
+    silenceAudioCounter = 0;
+    // push last singleAudioChunk to audioChunks, in case it is ignored.
+    if (singleAudioChunk != null) {
+        audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
+        singleAudioChunk = null;
+        if (lastProcessingCompleted && lastSpeechCompleted && audioChunks.length > 0) {
+            await processAudioBuffer();
+        }
     }
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());
@@ -331,6 +350,10 @@ async function captureAudioStream() {
         if (streamingNode) {
             return;
         }
+
+        VAD = await VADBuilder();
+        vad = new VAD(VADMode.AGGRESSIVE, kSampleRate);
+
         // clear output context
         textarea.value = '';
         sourceNode = new MediaStreamAudioSourceNode(context, { mediaStream: stream });
@@ -350,16 +373,37 @@ async function captureAudioStream() {
 
         streamingNode.port.onmessage = async (e) => {
             if (e.data.message === 'START_TRANSCRIBE') {
-                audioChunks.push(e.data.buffer);
-                // first time init the processAudioBuffer
-                if (speechState == SpeechStates.UNINITIALIZED) {
-                    speechState = SpeechStates.PROCESSING;
-                    await processAudioBuffer();
+                const frame = VAD.floatTo16BitPCM(e.data.buffer); // VAD requires Int16Array input
+                const res = vad.processBuffer(frame);
+                // has voice
+                if (res == VADEvent.VOICE) {
+                    singleAudioChunk = concatBuffer(singleAudioChunk, e.data.buffer);
+                    // meet max audio chunk length for a single process, split it.
+                    if (singleAudioChunk.length >= kSampleRate * maxChunkLength) {
+                        if (subAudioChunkLength == 0) {
+                            // subAudioChunkLength >= kSampleRate * maxChunkLength
+                            subAudioChunkLength = singleAudioChunk.length;
+                        }
+                        audioChunks.push({ 'isSubChunk': true, 'data': singleAudioChunk });
+                        singleAudioChunk = null;
+                    }
+
+                    silenceAudioCounter = 0;
+                } else { // no voice
+                    silenceAudioCounter++;
+                    // if only one silence chunk exists between two voice chunks,
+                    // just treat it as a continous audio chunk.
+                    if (singleAudioChunk != null && silenceAudioCounter > 1) {
+                        audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
+                        singleAudioChunk = null;
+                    }
                 }
+
                 // new audio is coming, and no audio is processing
-                if (isLastTransCompleted && !isProcessing && (audioChunks.length > audioChunksIndex)) {
+                if (lastProcessingCompleted && audioChunks.length > 0) {
                     await processAudioBuffer();
                 }
+
             }
         };
 
@@ -372,50 +416,64 @@ async function captureAudioStream() {
 }
 
 async function processAudioBuffer() {
-    isLastTransCompleted = false;
-    // meet maximum audio chunks, cut the last 30 sec audio, clear concatenatedAudio, audioChunksIndex
-    if (audioChunksIndex == maxChunkLength / chunkLength) {
-        audioChunks.splice(0, maxChunkLength / chunkLength);
-        concatenatedAudio = null;
-        audioChunksIndex = 0;
-    }
-
-    // pass the first audio chunk directly when audioChunksIndex is 0
-    if (audioChunksIndex == 0) {
-        concatenatedAudio = audioChunks[0];
+    lastProcessingCompleted = false;
+    let processBuffer = audioChunks[0].data;
+    // it is sub audio chunk, need to do rectification at last sub chunk
+    if (audioChunks[0].isSubChunk) {
+        subAudioChunks.push(processBuffer);
+        // if the speech is pause, and it is the last audio chunk, concat the subAudioChunks to do rectification
+        if (speechState == SpeechStates.PAUSED && audioChunks.length == 1) {
+            processBuffer = concatBufferArray(subAudioChunks);
+            subAudioChunks = []; // clear subAudioChunks
+        }
     } else {
-        // concat the previous audio chunks
-        concatenatedAudio = concatAudio(concatenatedAudio, audioChunks[audioChunksIndex]);
+        // concat all subAudoChunks to do rectification
+        if (subAudioChunks.length > 0) {
+            subAudioChunks.push(processBuffer); // append sub chunk's next neighbor
+            processBuffer = concatBufferArray(subAudioChunks);
+            subAudioChunks = []; // clear subAudioChunks
+        }
     }
-
-    const start = performance.now();
-    const ret = await whisper.run(concatenatedAudio, kSampleRate);
-    console.log(`${concatenatedAudio.length / kSampleRate} sec audio transcription time: ${((performance.now() - start) / 1000).toFixed(2)}sec`);
-    // ignore slient, inaudible audio, i.e. '[BLANK_AUDIO]'
-    // if (!blacklistTags.includes(ret)) {
-    // append results to textarea
-    if (audioChunksIndex == (maxChunkLength / chunkLength - 1)) {
-        speechToText += ret + '\n'; // append for each maxChunkLength/chunkLength iteration
-        textarea.value = speechToText;
-    } else {
-        textarea.value = speechToText + ret; // refresh in a maxChunkLength/chunkLength iteration
+    // if total length of subAudioChunks >= 10 sec,
+    // force to break it from subAudioChunks to reduce latency
+    // because it has to wait for more than 10 sec to do audio processing.
+    if (subAudioChunks.length * maxChunkLength >= 10) {
+        processBuffer = concatBufferArray(subAudioChunks);
+        subAudioChunks = [];
     }
-    textarea.scrollTop = textarea.scrollHeight;
-
-    audioChunksIndex++;
-    isLastTransCompleted = true;
-    if (audioChunks.length > audioChunksIndex && audioChunks.length != 0) {
+    // ignore too small audio chunk, e.g. 0.16 sec
+    // per testing, audios less than 0.16 sec are almost blank audio
+    if (processBuffer.length > kSampleRate * 0.16) {
+        const start = performance.now();
+        const ret = await whisper.run(processBuffer, kSampleRate);
+        console.log(`${processBuffer.length / kSampleRate} sec audio processing time: ${((performance.now() - start) / 1000).toFixed(2)} sec`);
+        console.log('result:', ret);
+        // TODO? throttle the un-processed audio chunks?
+        //In order to catch up latest audio to achieve real-time effects.
+        console.log('un-processed audio chunk length: ', (audioChunks.length - 1));
+        // ignore slient, inaudible audio output, i.e. '[BLANK_AUDIO]'
+        if (!blacklistTags.includes(ret)) {
+            if (subAudioChunks.length > 0) {
+                subText += ret;
+                textarea.value = speechToText + subText;
+            } else {
+                speechToText += ret;
+                textarea.value = speechToText;
+            }
+            textarea.scrollTop = textarea.scrollHeight;
+        }
+    }
+    lastProcessingCompleted = true;
+    audioChunks.shift(); // remove processed chunk
+    if (subAudioChunks.length == 0) {
+        // clear subText
+        subText = '';
+    }
+    if (audioChunks.length > 0) {
         // recusive audioBuffer in audioChunks
-        isProcessing = true;
+        lastSpeechCompleted = false;
         await processAudioBuffer();
     } else {
-        isProcessing = false;
+        lastSpeechCompleted = true;
     }
-}
-
-function concatAudio(lastAudio, newAudio) {
-    let nextAudio = new Float32Array(lastAudio.length + newAudio.length);
-    nextAudio.set(lastAudio);
-    nextAudio.set(newAudio, lastAudio.length);
-    return nextAudio;
 }

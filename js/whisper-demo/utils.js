@@ -170,3 +170,21 @@ export function convertToUint16Array(fp32_array) {
     }
     return fp16_array;
 }
+
+export function concatBuffer(buffer, newBuffer) {
+    if (buffer == null) {
+        return newBuffer;
+    }
+    let nextBuffer = new Float32Array(buffer.length + newBuffer.length);
+    nextBuffer.set(buffer);
+    nextBuffer.set(newBuffer, buffer.length);
+    return nextBuffer;
+}
+
+export function concatBufferArray(bufferArray) {
+    let concatedBuffer = null;
+    for (let i = 0; i < bufferArray.length; i++) {
+        concatedBuffer = concatBuffer(concatedBuffer, bufferArray[i]);
+    }
+    return concatedBuffer;
+}

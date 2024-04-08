@@ -53,12 +53,13 @@ let canvas;
 let filein;
 let decoder_latency;
 
-var image_embeddings;
-var points = [];
-var labels = [];
-var imageImageData;
-var isClicked = false;
-var maskImageData;
+let image_embeddings;
+let points = [];
+let labels = [];
+let imageImageData;
+let isClicked = false;
+let maskImageData;
+let num_points = 1;
 
 function log(i) {
     document.getElementById('status').innerText += `\n${i}`;
@@ -69,14 +70,14 @@ function log(i) {
  */
 function getConfig() {
     const query = window.location.search.substring(1);
-    var config = {
+    const config = {
         model: "sam_b",
         provider: "webnn",
         device: "gpu",
         threads: "1",
     };
     let vars = query.split("&");
-    for (var i = 0; i < vars.length; i++) {
+    for (let i = 0; i < vars.length; i++) {
         let pair = vars[i].split("=");
         if (pair[0] in config) {
             config[pair[0]] = decodeURIComponent(pair[1]);
@@ -173,9 +174,17 @@ async function decoder(points, labels) {
         const emb = await image_embeddings;
 
         // the decoder
-        const session = MODELS[config.model][1].sess;
+        let session = MODELS[config.model][1].sess;
 
         const feed = feedForSam(emb, points, labels);
+        if (labels.length != num_points && config.provider == 'webnn') {
+            // update num_points and re-create ort session for WebNN provider
+            // as WebNN doesn't support the dynamic shape model.
+            num_points = labels.length;
+            await session.release();
+            await load_models([MODELS[config.model][1]]);
+            session = MODELS[config.model][1].sess;
+        }
         const start = performance.now();
         const res = await session.run(feed);
         decoder_latency.innerText = `${(performance.now() - start).toFixed(1)}ms`;
@@ -272,7 +281,7 @@ async function handleImage(img) {
     canvas.width = width;
     canvas.height = height;
     
-    var ctx = canvas.getContext("2d");
+    let ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0, width, height);
 
     imageImageData = ctx.getImageData(0, 0, width, height);
@@ -353,7 +362,7 @@ async function load_models(models) {
                     deviceType: "gpu",
                 }];
                 opt.freeDimensionOverrides = {
-                    num_points: 1,
+                    num_points: num_points,
                 };
             }
             const model_bytes = await fetchAndCache(model.url, model.name);

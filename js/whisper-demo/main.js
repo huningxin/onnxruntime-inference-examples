@@ -77,6 +77,13 @@ const blacklistTags = [
     '[silent]',
 ];
 
+let recognition;
+let extensionUrl;
+export function setRecognition(object, extensionId) {
+    recognition = object;
+    extensionUrl = `chrome-extension://${extensionId}`;
+}
+
 function updateConfig() {
     const query = window.location.search.substring('1');
     const providers = ['webnn', 'webgpu', 'wasm'];
@@ -106,84 +113,86 @@ function busy() {
 
 // transcribe done
 function ready() {
-    speech.disabled = false;
-    transcribe.disabled = false;
-    progress.style.width = "0%";
-    progress.parentNode.style.display = "none";
+    // speech.disabled = false;
+    // transcribe.disabled = false;
+    // progress.style.width = "0%";
+    // progress.parentNode.style.display = "none";
+    console.log('whisper ready');
+    recognition._onready();
 }
 
 // called when document is loaded
-document.addEventListener("DOMContentLoaded", async () => {
-    audio_src = document.querySelector('audio');
-    record = document.getElementById('record');
-    speech = document.getElementById('speech');
-    transcribe = document.getElementById('transcribe');
-    progress = document.getElementById('progress');
-    textarea = document.getElementById('outputText');
-    transcribe.disabled = true;
-    speech.disabled = true;
-    progress.parentNode.style.display = "none";
-    updateConfig();
+// document.addEventListener("DOMContentLoaded", async () => {
+//     audio_src = document.querySelector('audio');
+//     record = document.getElementById('record');
+//     speech = document.getElementById('speech');
+//     transcribe = document.getElementById('transcribe');
+//     progress = document.getElementById('progress');
+//     textarea = document.getElementById('outputText');
+//     transcribe.disabled = true;
+//     speech.disabled = true;
+//     progress.parentNode.style.display = "none";
+//     updateConfig();
 
-    // click on Record
-    record.addEventListener("click", (e) => {
-        if (e.currentTarget.innerText == "Record") {
-            e.currentTarget.innerText = "Stop Recording";
-            startRecord();
-        }
-        else {
-            e.currentTarget.innerText = "Record";
-            stopRecord();
-        }
-    });
+//     // click on Record
+//     record.addEventListener("click", (e) => {
+//         if (e.currentTarget.innerText == "Record") {
+//             e.currentTarget.innerText = "Stop Recording";
+//             startRecord();
+//         }
+//         else {
+//             e.currentTarget.innerText = "Record";
+//             stopRecord();
+//         }
+//     });
 
     // click on Speech
-    speech.addEventListener("click", async (e) => {
-        if (e.currentTarget.innerText == "Start Speech") {
-            if (!lastSpeechCompleted) {
-                log('Last speech-to-text has not completed yet, try later...');
-                return;
-            }
-            subText = '';
-            e.currentTarget.innerText = "Stop Speech";
-            await startSpeech();
-        }
-        else {
-            e.currentTarget.innerText = "Start Speech";
-            await stopSpeech();
-        }
-    });
+    // speech.addEventListener("click", async (e) => {
+    //     if (e.currentTarget.innerText == "Start Speech") {
+    //         if (!lastSpeechCompleted) {
+    //             log('Last speech-to-text has not completed yet, try later...');
+    //             return;
+    //         }
+    //         subText = '';
+    //         e.currentTarget.innerText = "Stop Speech";
+    //         await startSpeech();
+    //     }
+    //     else {
+    //         e.currentTarget.innerText = "Start Speech";
+    //         await stopSpeech();
+    //     }
+    // });
 
-    // click on Transcribe
-    transcribe.addEventListener("click", () => {
-        transcribe_file();
-    });
+//     // click on Transcribe
+//     transcribe.addEventListener("click", () => {
+//         transcribe_file();
+//     });
 
-    // drop file
-    document.getElementById("file-upload").onchange = function (evt) {
-        let target = evt.target || window.event.src, files = target.files;
-        audio_src.src = URL.createObjectURL(files[0]);
-    }
-    log(`Execution provider: ${provider}`);
-    log("loading model...");
-    try {
-        context = new AudioContext({ sampleRate: kSampleRate });
-        const whisper_url = location.href.includes('github.io') ?
-            'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
-            './models/';
-        whisper = new Whisper(whisper_url, provider, dataType);
-        await whisper.create_whisper_processor();
-        await whisper.create_whisper_tokenizer();
-        await whisper.create_ort_sessions();
-        log("Ready to transcribe...");
-        ready();
-        if (!context) {
-            throw new Error("no AudioContext, make sure domain has access to Microphone");
-        }
-    } catch (e) {
-        log(`Error: ${e}`);
-    }
-});
+//     // drop file
+//     document.getElementById("file-upload").onchange = function (evt) {
+//         let target = evt.target || window.event.src, files = target.files;
+//         audio_src.src = URL.createObjectURL(files[0]);
+//     }
+//     log(`Execution provider: ${provider}`);
+//     log("loading model...");
+//     try {
+//         context = new AudioContext({ sampleRate: kSampleRate });
+//         const whisper_url = location.href.includes('github.io') ?
+//             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
+//             './models/';
+//         whisper = new Whisper(whisper_url, provider, dataType);
+//         await whisper.create_whisper_processor();
+//         await whisper.create_whisper_tokenizer();
+//         await whisper.create_ort_sessions();
+//         log("Ready to transcribe...");
+//         ready();
+//         if (!context) {
+//             throw new Error("no AudioContext, make sure domain has access to Microphone");
+//         }
+//     } catch (e) {
+//         log(`Error: ${e}`);
+//     }
+// });
 
 // process audio buffer
 async function process_audio(audio, starttime, idx, pos) {
@@ -287,7 +296,8 @@ function stopRecord() {
 }
 
 // start speech
-async function startSpeech() {
+export async function startSpeech() {
+    recognition._onstart();
     speechState = SpeechStates.PROCESSING;
     await captureAudioStream();
     if (streamingNode != null) {
@@ -296,7 +306,7 @@ async function startSpeech() {
 }
 
 // stop speech
-async function stopSpeech() {
+export async function stopSpeech() {
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: true });
         speechState = SpeechStates.PAUSED;
@@ -310,6 +320,7 @@ async function stopSpeech() {
             await processAudioBuffer();
         }
     }
+    recognition._onend();
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());
     // }
@@ -345,9 +356,9 @@ async function captureAudioStream() {
         vad = new VAD(VADMode.AGGRESSIVE, kSampleRate);
 
         // clear output context
-        textarea.value = '';
+        // textarea.value = '';
         sourceNode = new MediaStreamAudioSourceNode(context, { mediaStream: stream });
-        await context.audioWorklet.addModule('streaming-processor.js');
+        await context.audioWorklet.addModule(`${extensionUrl}/streaming_processor.js`);
         const streamProperties = {
             numberOfChannels: 1,
             sampleRate: context.sampleRate,
@@ -393,7 +404,6 @@ async function captureAudioStream() {
                 if (lastProcessingCompleted && audioChunks.length > 0) {
                     await processAudioBuffer();
                 }
-
             }
         };
 
@@ -401,6 +411,10 @@ async function captureAudioStream() {
             .connect(streamingNode)
             .connect(context.destination);
     } catch (e) {
+        recognition._onerror({
+            error: 'audio-capture',
+            message: 'Failed to process audio data.',
+        });
         log(`Error on capturing audio: ${e}`);
     }
 }
@@ -445,12 +459,14 @@ async function processAudioBuffer() {
         if (!blacklistTags.includes(ret)) {
             if (subAudioChunks.length > 0) {
                 subText += ret;
-                textarea.value = speechToText + subText;
+                // textarea.value = speechToText + subText;
+                recognition._onresult(subText, false);
             } else {
                 speechToText += ret;
-                textarea.value = speechToText;
+                // textarea.value = speechToText;
+                recognition._onresult(ret, true);
             }
-            textarea.scrollTop = textarea.scrollHeight;
+            // textarea.scrollTop = textarea.scrollHeight;
         }
     }
     lastProcessingCompleted = true;
@@ -467,3 +483,54 @@ async function processAudioBuffer() {
         lastSpeechCompleted = true;
     }
 }
+
+export async function initAudio() {
+    context = new AudioContext({
+        sampleRate: kSampleRate,
+        channelCount: 1,
+        echoCancellation: false,
+        autoGainControl: true,
+        noiseSuppression: true,
+    });
+    if (!context) {
+        recognition._onerror({
+            error: 'audio-capture',
+            message: 'Failed to create audio context.',
+        });
+        throw new Error("no AudioContext, make sure domain has access to Microphone");
+    }
+}
+
+export async function initWhisper() {
+    console.log(`Execution provider: ${provider}`);
+    console.log("loading model...");
+    try {
+        const whisper_url = location.href.includes('github.io') ?
+            'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
+            `${extensionUrl}/models/`;
+        whisper = new Whisper(whisper_url, provider, dataType, extensionUrl);
+        await whisper.create_whisper_processor();
+        await whisper.create_whisper_tokenizer();
+        await whisper.create_ort_sessions();
+        console.log("Ready to transcribe...");
+        ready();
+        
+    } catch (e) {
+        recognition._onerror({
+            error: 'service-not-allowed',
+            message: 'Failed to initialize Whisper models.',
+        });
+        console.log(`Error: ${e}`);
+    }
+}
+
+// chrome.runtime.onMessageExternal.addListener(
+//     async (request, sender, sendResponse) => {
+//       console.log(`polyfill request: ${request}`);
+//       switch(request) {
+//         case 'start':
+//             await initialize();
+//             break;
+//         default:
+//       }
+// });

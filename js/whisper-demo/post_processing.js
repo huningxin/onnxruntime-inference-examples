@@ -1,3 +1,5 @@
+import * as ort from 'onnxruntime-web/webgpu';
+
 export function cache_update(decoder_input, past_key_values, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0, data_type = 'float32') {
     const cache_precision = data_type == 'float32' ? Float32Array : Uint16Array;
     // at the output of the first inference model, we perform right padding on kv cache

@@ -1,4 +1,6 @@
-import { AutoProcessor, AutoTokenizer } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.1';
+import * as ort from 'onnxruntime-web/webgpu';
+
+import { AutoProcessor, AutoTokenizer, env } from '@xenova/transformers';
 
 //'@xenova/transformers';
 import { get_new_tokens } from './generation_utils.js';
@@ -7,7 +9,7 @@ import {log, getModelOPFS, convertToFloat32Array, convertToUint16Array} from './
 
 // wrapper around onnxruntime and model
 export class Whisper {
-    constructor(url, provider, dataType) {
+    constructor(url, provider, dataType, remoteHost) {
         this.url = url;
         this.provider = provider;
         this.dataType = dataType;
@@ -26,16 +28,21 @@ export class Whisper {
         this.sampling_rate = 16000;
         this.processor = null;
         this.tokenizer = null;
+
+        // Configure env
+        env.remoteHost = remoteHost;
+        env.useBrowserCache = false;
+        env.allowLocalModels = false;
     }
 
     async create_whisper_processor() {
         // processor contains feature extractor
-        this.processor = await AutoProcessor.from_pretrained('openai/whisper-base');
+        this.processor = await AutoProcessor.from_pretrained('models/openai/whisper-base');
     }
 
     async create_whisper_tokenizer() {
         // processor contains feature extractor
-        this.tokenizer = await AutoTokenizer.from_pretrained('openai/whisper-base', { config: { do_normalize: true } });
+        this.tokenizer = await AutoTokenizer.from_pretrained('models/openai/whisper-base', { config: { do_normalize: true } });
     }
 
     async create_ort_sessions() {
@@ -54,8 +61,9 @@ export class Whisper {
                 } else {
                     url = url.replace('.onnx', '_layernorm.onnx');
                 }
-                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
-                this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
+                // const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
+                // this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
+                this.models[name]['sess'] = await ort.InferenceSession.create(url, options);
                 log(`Model ${url} loaded`);
             } catch (e) {
                 log(`Error: ${e}`);

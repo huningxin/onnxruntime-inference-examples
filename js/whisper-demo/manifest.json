@@ -1,0 +1,40 @@
+{
+    "name": "Whisper",
+    "version": "0.0.1",
+    "manifest_version": 3,
+    "description": "",
+    "action": {},
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "all_frames": true,
+        "js": ["content.js"],
+        "run_at": "document_start"
+      }
+    ],
+    "background": {
+        "service_worker": "main.js",
+        "type": "module"
+    },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'"
+    },
+    "web_accessible_resources": [{
+        "resources": [
+            "polyfill.js",
+            "streaming_processor.js",
+            "ort-wasm-simd.wasm",
+            "ort-wasm-simd.jsep.wasm",
+            "models/whisper_base_encoder_lm_fp16_layernorm.onnx",
+            "models/whisper_base_decoder_static_non_kvcache_lm_fp16_layernorm.onnx",
+            "models/whisper_base_decoder_static_kvcache_128_lm_fp16_layernorm.onnx",
+            "models/openai/whisper-base/resolve/main/preprocessor_config.json",
+            "models/openai/whisper-base/resolve/main/tokenizer.json",
+            "models/openai/whisper-base/resolve/main/tokenizer_config.json"
+        ],
+        "matches": ["<all_urls>"]
+    }],
+    "externally_connectable": {
+        "matches": ["<all_urls>"]
+    }
+  }

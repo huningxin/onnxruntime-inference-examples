@@ -167,13 +167,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     log(`Execution provider: ${provider}`);
     log("loading model...");
     try {
-        context = new AudioContext({
-            sampleRate: kSampleRate,
-            channelCount: 1,
-            echoCancellation: false,
-            autoGainControl: true,
-            noiseSuppression: true,
-        });
+        context = new AudioContext({ sampleRate: kSampleRate });
         const whisper_url = location.href.includes('github.io') ?
             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
             './models/';
@@ -260,9 +254,10 @@ async function startRecord() {
             if (!stream) {
                 stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
-                        echoCancellation: false,
-                        autoGainControl: false,
-                        noiseSuppression: false,
+                        echoCancellation: true,
+                        autoGainControl: true,
+                        noiseSuppression: true,
+                        channelCount: 1,
                         latency: 0
                     }
                 });
@@ -340,9 +335,10 @@ async function captureAudioStream() {
         if (!stream) {
             stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    echoCancellation: false,
-                    autoGainControl: false,
-                    noiseSuppression: false,
+                    echoCancellation: true,
+                    autoGainControl: true,
+                    noiseSuppression: true,
+                    channelCount: 1,
                     latency: 0
                 }
             });

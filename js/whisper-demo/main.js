@@ -17,7 +17,7 @@ const kDelay = 100;
 let whisper;
 
 let provider = 'webnn';
-let dataType = 'float32';
+let dataType = 'float16';
 
 // audio context
 var context = null;
@@ -91,7 +91,7 @@ function updateConfig() {
             dataType = pair[1];
         }
         if (pair[0] == 'maxChunkLength') {
-            maxChunkLength = parseInt(pair[1]);
+            maxChunkLength = parseFloat(pair[1]);
         }
     }
 }

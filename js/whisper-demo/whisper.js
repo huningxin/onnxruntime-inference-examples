@@ -67,6 +67,7 @@ export class Whisper {
         // -----------------------------------FEATURE EXTRACTION-----------------------------------------
         // const audio = await read_audio('https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/mlk.flac', 16000);
         // const audio = await read_audio(audio_data, sampling_rate);
+        let start = performance.now();
         const { input_features } = await this.processor(audio_data);
         // -----------------------------------ENCODER INFERENCE-----------------------------------------
         // run encoder to get output
@@ -78,9 +79,13 @@ export class Whisper {
         if (this.dataType == 'float16') {
             encoder_inputs.data = convertToUint16Array(encoder_inputs.data);
         }
+        console.log(`  pre-processing time: ${(performance.now() - start).toFixed(2)} ms`);
+        start = performance.now();
         const { last_hidden_state } = await this.models['encoder']['sess'].run({
             input_features: new ort.Tensor(encoder_inputs.type, encoder_inputs.data, encoder_inputs.dims)
         });
+        console.log(`  encoder inference time: ${(performance.now() - start).toFixed(2)} ms`);
+        start = performance.now();
         // -----------------------------------DECODER 1ST INFERENCE-----------------------------------------
         // create list of tokens for english language and transcribe task, no need of time stamps
         // TODO: CHANGE FROM HARDCODED VALUES
@@ -94,9 +99,12 @@ export class Whisper {
             'encoder_hidden_states': last_hidden_state,
         };
 
+        console.log(`  non-kv cache decoder input preparation time: ${(performance.now() - start).toFixed(2)} ms`);
+        start = performance.now();
         // run the first inference which generates SA and CA KV cache
         const decoder_output = await this.models['decoder']['sess'].run(decoder_input);
-
+        console.log(`  non-kv cache decoder inference time: ${(performance.now() - start).toFixed(2)} ms`);
+        start = performance.now();
         let logits = decoder_output['logits']['cpuData'];
 
         if (this.dataType == 'float16') {
@@ -142,8 +150,11 @@ export class Whisper {
         const position_ids = new Int32Array(decoder_input['position_ids'].cpuData.buffer);
         // run complete inference for every item in dataset
         for (let i = 4; i < this.max_sequence_length; i++) {
+            console.log(`  decoder iteration ${i-3}: input preparation time: ${(performance.now() - start).toFixed(2)} ms`);
+            start = performance.now();
             const decoder_cached_output = await this.models['decoder_cached']['sess'].run(decoder_input);
-
+            console.log(`  decoder iteration ${i-3}: inference time: ${(performance.now() - start).toFixed(2)} ms`);
+            start = performance.now();
             // find out the token with highest probability, cast INT64 to INT32
             let logits = decoder_cached_output['logits']['cpuData'];
             if (this.dataType == 'float16') {
@@ -172,6 +183,7 @@ export class Whisper {
 
         // add token to sentence decode time
         const sentence = await this.tokenizer.decode(tokens, { skip_special_tokens: true });
+        console.log(`  post-processing time: ${(performance.now() - start).toFixed(2)} ms`);
         return sentence;
     }
 }

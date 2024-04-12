@@ -185,10 +185,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // process audio buffer
 async function process_audio(audio, starttime, idx, pos) {
     if (idx < audio.length) {
@@ -197,14 +193,12 @@ async function process_audio(audio, starttime, idx, pos) {
             // update progress bar
             progress.style.width = (idx * 100 / audio.length).toFixed(1) + "%";
             progress.textContent = progress.style.width;
-            await sleep(kDelay);
             // run inference for 30 sec
             const xa = audio.slice(idx, idx + kSteps);
-            const ret = await whisper.run(xa, kSampleRate);
+            const ret = await whisper.run(xa);
             // append results to textarea 
             textarea.value += ret;
             textarea.scrollTop = textarea.scrollHeight;
-            await sleep(kDelay);
             process_audio(audio, starttime, idx + kSteps, pos + 30);
         } catch (e) {
             log(`Error: ${e}`);
@@ -441,7 +435,7 @@ async function processAudioBuffer() {
     // per testing, audios less than 0.16 sec are almost blank audio
     if (processBuffer.length > kSampleRate * 0.16) {
         const start = performance.now();
-        const ret = await whisper.run(processBuffer, kSampleRate);
+        const ret = await whisper.run(processBuffer);
         console.log(`${processBuffer.length / kSampleRate} sec audio processing time: ${((performance.now() - start) / 1000).toFixed(2)} sec`);
         console.log('result:', ret);
         // TODO? throttle the un-processed audio chunks?

@@ -63,7 +63,7 @@ export class Whisper {
         };
     }
 
-    async run(audio_data, sampling_rate) {
+    async run(audio_data) {
         // -----------------------------------FEATURE EXTRACTION-----------------------------------------
         // const audio = await read_audio('https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/mlk.flac', 16000);
         // const audio = await read_audio(audio_data, sampling_rate);
@@ -153,7 +153,10 @@ export class Whisper {
 
             // add token to final buffer
             tokens = tokens.concat(new_token);
-
+            // break if the new token is eos_token_id: 50257 (end of sequence)
+            if (new_token == 50257) {
+                break;
+            }
             // ----------------------------------POST PROCESSING---------------------------------------
             // the following code creates decoder input for the next inference
             decoder_input['input_ids'] = new ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
@@ -165,10 +168,6 @@ export class Whisper {
             attention_mask_update(decoder_input['attention_mask'].cpuData, i, this.max_sequence_length, this.num_init_tokens, position_ids[0]);
             // modify the kv cache in place
             cache_update(decoder_input, decoder_cached_output, i, this.max_sequence_length, this.num_init_tokens, position_ids[0], this.dataType);
-            // break if the new token is eos_token_id: 50257 (end of sequence)
-            if (new_token == 50257) {
-                break;
-            }
         }
 
         // add token to sentence decode time

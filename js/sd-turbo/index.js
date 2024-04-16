@@ -118,13 +118,14 @@ const config = getConfig();
 const models = {
     "unet": {
         // original model from dwayne, then I dump new one from local graph optimization.
-        url: "unet/model.onnx", size: 640,
+        url: "unet/model_layernorm.onnx", size: 640,
         opt: { graphOptimizationLevel: 'disabled' }, // avoid wasm heap issue (need Wasm memory 64)
     },
     "text_encoder": {
         // orignal model from guschmue, I convert the output to fp16.
-        url: "text_encoder/model.onnx", size: 1700,
-        opt: { freeDimensionOverrides: { batch_size: 1, sequence_length: 77 } },
+        url: "text_encoder/model_layernorm.onnx", size: 1700,
+        opt: { graphOptimizationLevel: 'disabled' }, // it is already an optimized model
+        // opt: { freeDimensionOverrides: { batch_size: 1, sequence_length: 77 } },
     },
     "vae_decoder": {
         // use guschmue's model has precision lose in webnn caused by instanceNorm op,

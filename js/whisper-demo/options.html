@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Whisper Extension Options</title>
+    <script defer src="options.js"></script>
+  </head>
+  <body>
+    <div>
+      Execution Provider:
+      <select id="provider">
+        <option value="webnn">webnn</option>
+        <option value="webgpu">webgpu</option>
+        <option value="wasm">wasm</option>
+      </select>
+    </div>
+    <div>
+      Data Type:
+      <select id="dataType">
+        <option value="float16">float16</option>
+        <option value="float32">float32</option>
+      </select>
+    </div>
+    <div>
+      Max Audio Chunk Length (seconds):
+      <input type="number" id="maxChunkLength" defaultValue="1" value="1" />
+    </div>
+    <div>
+      <input type="button" value="Save" id="save" />
+    </div>
+  </body>
+</html>

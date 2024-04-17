@@ -3,13 +3,10 @@ import { AutoProcessor, AutoTokenizer, env } from '@xenova/transformers';
 
 import { startSpeech, stopSpeech, initWhisper } from './main.js';
 
-const extensionId = JSON.parse(document.currentScript.dataset.params).extensionId;
+const options = JSON.parse(document.currentScript.dataset.params);
 
-const baseUrl = `chrome-extension://${extensionId}`;
-
-const options = {
-    baseUrl: baseUrl
-};
+const baseUrl = `chrome-extension://${options.extensionId}`;
+options.baseUrl = baseUrl;
 
 // Configure remote host for extension and disable caches.
 env.remoteHost = `${baseUrl}/models`;

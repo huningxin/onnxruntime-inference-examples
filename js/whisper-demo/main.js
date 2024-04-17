@@ -9,7 +9,6 @@ import { log, concatBuffer, concatBufferArray } from './utils.js';
 import VADBuilder, { VADMode, VADEvent } from "./vad/embedded.js";
 
 const kSampleRate = 16000;
-const kIntervalAudio_ms = 1000;
 const kSteps = kSampleRate * 30;
 const kDelay = 100;
 
@@ -21,16 +20,11 @@ let dataType = 'float16';
 
 // audio context
 var context = null;
-let mediaRecorder;
 let stream;
 
-// some dom shortcuts
-let record;
-let speech;
-let transcribe;
-let progress;
-let audio_src;
-let textarea;
+export function getAudioContext() {
+    return context;
+}
 
 // for audio capture
 // This enum states the current speech state.
@@ -54,15 +48,15 @@ let lastProcessingCompleted = true;
 // check if last speech processing is completed when restart speech
 let lastSpeechCompleted = true;
 
-
 // involve webrtcvad to detect voice activity
 let VAD = null;
 let vad = null;
 
 let singleAudioChunk = null; // one time audio process buffer
 let subAudioChunkLength = 0; // length of a sub audio chunk
-let speechToText = '';
 let subText = '';
+
+let baseUrl = '.';
 
 const blacklistTags = [
     '[inaudible]',
@@ -77,116 +71,48 @@ const blacklistTags = [
     '[silent]',
 ];
 
-function updateConfig() {
-    const query = window.location.search.substring('1');
-    const providers = ['webnn', 'webgpu', 'wasm'];
-    const dataTypes = ['float32', 'float16'];
-    let vars = query.split('&');
-    for (let i = 0; i < vars.length; i++) {
-        let pair = vars[i].split('=');
-        if (pair[0] == 'provider' && providers.includes(pair[1])) {
-            provider = pair[1];
+function updateConfig(options) {
+    if (options !== undefined) {
+        if (options.baseUrl !== undefined) {
+            baseUrl = options.baseUrl;
         }
-        if (pair[0] == 'dataType' && dataTypes.includes(pair[1])) {
-            dataType = pair[1];
+        if (options.provider !== undefined) {
+            provider = options.provider;
         }
-        if (pair[0] == 'maxChunkLength') {
-            maxChunkLength = parseFloat(pair[1]);
+        if (options.dataType !== undefined) {
+            dataType = options.dataType;
+        }
+        if (options.maxChunkLength !== undefined) {
+            maxChunkLength = options.maxChunkLength;
         }
     }
 }
 
-// transcribe active
-function busy() {
-    transcribe.disabled = true;
-    progress.parentNode.style.display = "block";
-    document.getElementById("outputText").value = "";
-    document.getElementById('latency').innerText = "";
-}
-
-// transcribe done
-function ready() {
-    speech.disabled = false;
-    transcribe.disabled = false;
-    progress.style.width = "0%";
-    progress.parentNode.style.display = "none";
-}
-
-// called when document is loaded
-document.addEventListener("DOMContentLoaded", async () => {
-    audio_src = document.querySelector('audio');
-    record = document.getElementById('record');
-    speech = document.getElementById('speech');
-    transcribe = document.getElementById('transcribe');
-    progress = document.getElementById('progress');
-    textarea = document.getElementById('outputText');
-    transcribe.disabled = true;
-    speech.disabled = true;
-    progress.parentNode.style.display = "none";
-    updateConfig();
-
-    // click on Record
-    record.addEventListener("click", (e) => {
-        if (e.currentTarget.innerText == "Record") {
-            e.currentTarget.innerText = "Stop Recording";
-            startRecord();
-        }
-        else {
-            e.currentTarget.innerText = "Record";
-            stopRecord();
-        }
-    });
-
-    // click on Speech
-    speech.addEventListener("click", async (e) => {
-        if (e.currentTarget.innerText == "Start Speech") {
-            if (!lastSpeechCompleted) {
-                log('Last speech-to-text has not completed yet, try later...');
-                return;
-            }
-            subText = '';
-            e.currentTarget.innerText = "Stop Speech";
-            await startSpeech();
-        }
-        else {
-            e.currentTarget.innerText = "Start Speech";
-            await stopSpeech();
-        }
-    });
-
-    // click on Transcribe
-    transcribe.addEventListener("click", () => {
-        transcribe_file();
-    });
-
-    // drop file
-    document.getElementById("file-upload").onchange = function (evt) {
-        let target = evt.target || window.event.src, files = target.files;
-        audio_src.src = URL.createObjectURL(files[0]);
-    }
+// Initalize audio context and whisper models. The caller must pass ort, AutoProcessor and AutoTokenizer
+// because they may be loaded via different ways (webpack, import or script tag).
+export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
+    updateConfig(options);
     log(`Execution provider: ${provider}`);
     log("loading model...");
     try {
         context = new AudioContext({ sampleRate: kSampleRate });
         const whisper_url = location.href.includes('github.io') ?
             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
-            './models/';
-        whisper = new Whisper(whisper_url, provider, dataType);
+            `${baseUrl}/models/`;
+        whisper = new Whisper(whisper_url, provider, dataType, ort, AutoProcessor, AutoTokenizer);
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();
         log("Ready to transcribe...");
-        ready();
-        if (!context) {
-            throw new Error("no AudioContext, make sure domain has access to Microphone");
-        }
     } catch (e) {
         log(`Error: ${e}`);
+        return false;
     }
-});
+    return true;
+}
 
 // process audio buffer
-async function process_audio(audio, starttime, idx, pos) {
+export async function process_audio(audio, starttime, idx, pos, textarea) {
     if (idx < audio.length) {
         // not done
         try {
@@ -199,10 +125,9 @@ async function process_audio(audio, starttime, idx, pos) {
             // append results to textarea 
             textarea.value += ret;
             textarea.scrollTop = textarea.scrollHeight;
-            process_audio(audio, starttime, idx + kSteps, pos + 30);
+            process_audio(audio, starttime, idx + kSteps, pos + 30, textarea);
         } catch (e) {
             log(`Error: ${e}`);
-            ready();
         }
     } else {
         // done with audio buffer
@@ -210,93 +135,29 @@ async function process_audio(audio, starttime, idx, pos) {
         const total = (audio.length / kSampleRate);
         document.getElementById('latency').innerText = `${(total / processing_time).toFixed(1)} x realtime`;
         log(`${document.getElementById('latency').innerText}, total ${processing_time.toFixed(1)}sec processing time for ${total.toFixed(1)}sec audio`);
-        ready();
     }
 }
 
-// transcribe audio source
-async function transcribe_file() {
-    if (audio_src.src == "") {
-        log("Error: set some Audio input");
-        return;
-    }
-
-    busy();
-    log("start transcribe ...");
-    try {
-        const buffer = await (await fetch(audio_src.src)).arrayBuffer();
-        const audioBuffer = await context.decodeAudioData(buffer);
-        var offlineContext = new OfflineAudioContext(audioBuffer.numberOfChannels, audioBuffer.length, audioBuffer.sampleRate);
-        var source = offlineContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(offlineContext.destination);
-        source.start();
-        const renderedBuffer = await offlineContext.startRendering();
-        const audio = renderedBuffer.getChannelData(0);
-        process_audio(audio, performance.now(), 0, 0);
-    }
-    catch (e) {
-        log(`Error: ${e}`);
-        ready();
-    }
-}
-
-// start recording
-async function startRecord() {
-    if (mediaRecorder === undefined) {
-        try {
-            if (!stream) {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        autoGainControl: true,
-                        noiseSuppression: true,
-                        channelCount: 1,
-                        latency: 0
-                    }
-                });
-            }
-            mediaRecorder = new MediaRecorder(stream);
-        } catch (e) {
-            record.innerText = "Record";
-            log(`Access to Microphone, ${e}`);
-        }
-    }
-    let recording_start = performance.now();
-    let chunks = [];
-
-    mediaRecorder.ondataavailable = (e) => {
-        chunks.push(e.data);
-        document.getElementById('latency').innerText = `recorded: ${((performance.now() - recording_start) / 1000).toFixed(1)}sec`;
-    }
-
-    mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
-        log(`recorded ${((performance.now() - recording_start) / 1000).toFixed(1)}sec audio`);
-        audio_src.src = window.URL.createObjectURL(blob);
-    };
-    mediaRecorder.start(kIntervalAudio_ms);
-}
-
-// stop recording
-function stopRecord() {
-    if (mediaRecorder) {
-        mediaRecorder.stop();
-        mediaRecorder = undefined;
-    }
-}
+let recognition;
 
 // start speech
-async function startSpeech() {
+export async function startSpeech(recognitionClient) {
+    if (!lastSpeechCompleted) {
+        log('Last speech-to-text has not completed yet, try later...');
+        return false;
+    }
+    recognition = recognitionClient;
+    recognition._onstart();
     speechState = SpeechStates.PROCESSING;
     await captureAudioStream();
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: false });
     }
+    return true;
 }
 
 // stop speech
-async function stopSpeech() {
+export async function stopSpeech() {
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: true });
         speechState = SpeechStates.PAUSED;
@@ -310,6 +171,7 @@ async function stopSpeech() {
             await processAudioBuffer();
         }
     }
+    recognition._onend();
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());
     // }
@@ -345,9 +207,9 @@ async function captureAudioStream() {
         vad = new VAD(VADMode.AGGRESSIVE, kSampleRate);
 
         // clear output context
-        textarea.value = '';
+        // textarea.value = '';
         sourceNode = new MediaStreamAudioSourceNode(context, { mediaStream: stream });
-        await context.audioWorklet.addModule('streaming-processor.js');
+        await context.audioWorklet.addModule(`${baseUrl}/streaming_processor.js`);
         const streamProperties = {
             numberOfChannels: 1,
             sampleRate: context.sampleRate,
@@ -393,7 +255,6 @@ async function captureAudioStream() {
                 if (lastProcessingCompleted && audioChunks.length > 0) {
                     await processAudioBuffer();
                 }
-
             }
         };
 
@@ -401,6 +262,10 @@ async function captureAudioStream() {
             .connect(streamingNode)
             .connect(context.destination);
     } catch (e) {
+        recognition._onerror({
+            error: 'audio-capture',
+            message: 'Failed to process audio data.',
+        });
         log(`Error on capturing audio: ${e}`);
     }
 }
@@ -445,20 +310,15 @@ async function processAudioBuffer() {
         if (!blacklistTags.includes(ret)) {
             if (subAudioChunks.length > 0) {
                 subText += ret;
-                textarea.value = speechToText + subText;
+                recognition._onresult(subText, false);
             } else {
-                speechToText += ret;
-                textarea.value = speechToText;
+                subText = '';
+                recognition._onresult(ret, true);
             }
-            textarea.scrollTop = textarea.scrollHeight;
         }
     }
     lastProcessingCompleted = true;
     audioChunks.shift(); // remove processed chunk
-    if (subAudioChunks.length == 0) {
-        // clear subText
-        subText = '';
-    }
     if (audioChunks.length > 0) {
         // recusive audioBuffer in audioChunks
         lastSpeechCompleted = false;

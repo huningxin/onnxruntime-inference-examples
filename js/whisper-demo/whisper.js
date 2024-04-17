@@ -1,5 +1,3 @@
-import { AutoProcessor, AutoTokenizer } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.1';
-
 //'@xenova/transformers';
 import { get_new_tokens } from './generation_utils.js';
 import { attention_mask_update, cache_update } from './post_processing.js';
@@ -7,11 +5,14 @@ import {log, getModelOPFS, convertToFloat32Array, convertToUint16Array} from './
 
 // wrapper around onnxruntime and model
 export class Whisper {
-    constructor(url, provider, dataType) {
+    constructor(url, provider, dataType, ort, AutoProcessor, AutoTokenizer) {
         this.url = url;
         this.provider = provider;
         this.dataType = dataType;
-        ort.env.wasm.simd = true;
+        this.ort = ort;
+        this.ort.env.wasm.simd = true;
+        this.AutoProcessor = AutoProcessor;
+        this.AutoTokenizer = AutoTokenizer;
 
         this.models = {
             'encoder': { url: 'whisper_base_encoder_lm.onnx', sess: null },
@@ -30,12 +31,12 @@ export class Whisper {
 
     async create_whisper_processor() {
         // processor contains feature extractor
-        this.processor = await AutoProcessor.from_pretrained('openai/whisper-base');
+        this.processor = await this.AutoProcessor.from_pretrained('openai/whisper-base');
     }
 
     async create_whisper_tokenizer() {
         // processor contains feature extractor
-        this.tokenizer = await AutoTokenizer.from_pretrained('openai/whisper-base', { config: { do_normalize: true } });
+        this.tokenizer = await this.AutoTokenizer.from_pretrained('openai/whisper-base', { config: { do_normalize: true } });
     }
 
     async create_ort_sessions() {
@@ -54,8 +55,12 @@ export class Whisper {
                 } else {
                     url = url.replace('.onnx', '_layernorm.onnx');
                 }
-                const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
-                this.models[name]['sess'] = await ort.InferenceSession.create(modelBuffer, options);
+                if (!url.startsWith('chrome-extension://')) {
+                    const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
+                    this.models[name]['sess'] = await this.ort.InferenceSession.create(modelBuffer, options);
+                } else {
+                    this.models[name]['sess'] = await this.ort.InferenceSession.create(url, options);
+                }
                 log(`Model ${url} loaded`);
             } catch (e) {
                 log(`Error: ${e}`);
@@ -82,7 +87,7 @@ export class Whisper {
         console.log(`  pre-processing time: ${(performance.now() - start).toFixed(2)} ms`);
         start = performance.now();
         const { last_hidden_state } = await this.models['encoder']['sess'].run({
-            input_features: new ort.Tensor(encoder_inputs.type, encoder_inputs.data, encoder_inputs.dims)
+            input_features: new this.ort.Tensor(encoder_inputs.type, encoder_inputs.data, encoder_inputs.dims)
         });
         console.log(`  encoder inference time: ${(performance.now() - start).toFixed(2)} ms`);
         start = performance.now();
@@ -94,8 +99,8 @@ export class Whisper {
         const attention_mask = [1, 1, 1, 1];
         // create decoder input for the first inference
         const decoder_input = {
-            'input_ids': new ort.Tensor('int32', new Int32Array(tokens), [1, 4]),
-            'attention_mask': new ort.Tensor('int32', new Int32Array(attention_mask), [1, 4]),
+            'input_ids': new this.ort.Tensor('int32', new Int32Array(tokens), [1, 4]),
+            'attention_mask': new this.ort.Tensor('int32', new Int32Array(attention_mask), [1, 4]),
             'encoder_hidden_states': last_hidden_state,
         };
 
@@ -123,13 +128,13 @@ export class Whisper {
         // prepare inputs for decoder kv cache
 
         // create 1x1 array for input_ids
-        decoder_input['input_ids'] = new ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
+        decoder_input['input_ids'] = new this.ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
 
         // pad attention mask to max_seq_length
-        decoder_input['attention_mask'] = new ort.Tensor('int64', attention_mask_update(new BigInt64Array([1n, 1n, 1n, 1n]),
+        decoder_input['attention_mask'] = new this.ort.Tensor('int64', attention_mask_update(this.ort, new BigInt64Array([1n, 1n, 1n, 1n]),
             0, this.max_sequence_length, this.num_init_tokens), [1, 128]);
         // create position_ids as input, value should be same of No. of prefill tokens
-        decoder_input['position_ids'] = new ort.Tensor('int32', new Int32Array([this.num_init_tokens]), [1]);
+        decoder_input['position_ids'] = new this.ort.Tensor('int32', new Int32Array([this.num_init_tokens]), [1]);
 
         // fill decoder kv cache model inputs with cross attention KV cache data from decoder 1st inference
         for (let i = 0; i < 6; i++) {
@@ -139,6 +144,7 @@ export class Whisper {
 
         // modify the self attention kv cache in place
         cache_update(
+            this.ort,
             decoder_input,
             decoder_output,
             0,
@@ -170,15 +176,15 @@ export class Whisper {
             }
             // ----------------------------------POST PROCESSING---------------------------------------
             // the following code creates decoder input for the next inference
-            decoder_input['input_ids'] = new ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
+            decoder_input['input_ids'] = new this.ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
 
             // increment the position_ids
             position_ids[0] = position_ids[0] + 1;
 
             // update mask using position id
-            attention_mask_update(decoder_input['attention_mask'].cpuData, i, this.max_sequence_length, this.num_init_tokens, position_ids[0]);
+            attention_mask_update(this.ort, decoder_input['attention_mask'].cpuData, i, this.max_sequence_length, this.num_init_tokens, position_ids[0]);
             // modify the kv cache in place
-            cache_update(decoder_input, decoder_cached_output, i, this.max_sequence_length, this.num_init_tokens, position_ids[0], this.dataType);
+            cache_update(this.ort, decoder_input, decoder_cached_output, i, this.max_sequence_length, this.num_init_tokens, position_ids[0], this.dataType);
         }
 
         // add token to sentence decode time

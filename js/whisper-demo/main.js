@@ -82,6 +82,7 @@ const blacklistTags = [
 ];
 
 function updateConfig(options) {
+    console.log(options);
     if (options !== undefined) {
         if (options.baseUrl !== undefined) {
             baseUrl = options.baseUrl;

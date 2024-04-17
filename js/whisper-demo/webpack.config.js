@@ -34,7 +34,12 @@ const config = {
                     // Use copy plugin to copy *.wasm to output folder.
                     from: 'node_modules/onnxruntime-web/dist/*.wasm',
                     to: '[name][ext]'
-                }
+                },
+                {
+                    // Options UI
+                    from: "options.*",
+                    to: "." // Copies to build folder
+                },
             ],
         })
     ],

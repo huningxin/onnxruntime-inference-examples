@@ -1,6 +1,20 @@
-import { setRecognition, startSpeech, stopSpeech, initAudio, initWhisper} from './main.js';
+import * as ort from 'onnxruntime-web/webgpu';
+import { AutoProcessor, AutoTokenizer, env } from '@xenova/transformers';
+
+import { startSpeech, stopSpeech, initWhisper } from './main.js';
 
 const extensionId = JSON.parse(document.currentScript.dataset.params).extensionId;
+
+const baseUrl = `chrome-extension://${extensionId}`;
+
+const options = {
+    baseUrl: baseUrl
+};
+
+// Configure remote host for extension and disable caches.
+env.remoteHost = `${baseUrl}/models`;
+env.useBrowserCache = false;
+env.allowLocalModels = false;
 
 class WhisperSpeechRecognition {
     constructor() {
@@ -8,13 +22,9 @@ class WhisperSpeechRecognition {
         this.ready_ = false;
         this.continuous = false;
         this.interimResults = false;
-        setRecognition(this, extensionId);
-        initAudio();
-        initWhisper();
-    }
-
-    _onready() {
-        this.ready_ = true;
+        initWhisper(ort, AutoProcessor, AutoTokenizer, options)
+            .then(() => {this.ready_ = true;})
+            .catch(() => {this.ready_ = false;});
     }
 
     async start() {
@@ -23,7 +33,7 @@ class WhisperSpeechRecognition {
             console.warn('WhisperSpeechRecognition is not ready');
             return;
         }
-        startSpeech();
+        startSpeech(this);
     }
 
     async stop() {

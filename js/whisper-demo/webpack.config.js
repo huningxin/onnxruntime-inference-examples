@@ -10,10 +10,10 @@ const config = {
     mode: 'development',
     devtool: 'inline-source-map',
     entry: {
-        main: './main.js',
         content: './content.js',
-        streaming_processor: './streaming_processor.js',
-        polyfill: './polyfill.js'
+        polyfill: './polyfill.js',
+        background: './background.js',
+        streaming_processor: './streaming_processor.js'
     },
     output: {
         path: path.resolve(__dirname, 'build'),

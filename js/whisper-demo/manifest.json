@@ -13,7 +13,7 @@
       }
     ],
     "background": {
-        "service_worker": "main.js",
+        "service_worker": "background.js",
         "type": "module"
     },
     "content_security_policy": {

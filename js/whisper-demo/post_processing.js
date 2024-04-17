@@ -1,6 +1,4 @@
-import * as ort from 'onnxruntime-web/webgpu';
-
-export function cache_update(decoder_input, past_key_values, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0, data_type = 'float32') {
+export function cache_update(ort, decoder_input, past_key_values, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0, data_type = 'float32') {
     const cache_precision = data_type == 'float32' ? Float32Array : Uint16Array;
     // at the output of the first inference model, we perform right padding on kv cache
     if (inf_iter === 0) {
@@ -45,7 +43,7 @@ export function cache_update(decoder_input, past_key_values, inf_iter, max_seque
     }
 }
 
-export function attention_mask_update(attention_mask, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0) {
+export function attention_mask_update(ort, attention_mask, inf_iter, max_sequence_length = 448, num_init_tokens = 4, position_ids = 0) {
     if (inf_iter === 0) {
         // -1 added to allow space for new token such that attention mask 2nd dim is restricted to max seq len
         let padded_mask = new BigInt64Array(max_sequence_length - num_init_tokens - 1).fill(0n);

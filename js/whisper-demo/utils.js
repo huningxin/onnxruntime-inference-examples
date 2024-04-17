@@ -55,7 +55,9 @@ async function readResponse(response) {
 
 export function log(i) {
     console.log(i);
-    // document.getElementById('status').innerText += `\n[${performance.now().toFixed(2)}] ` + i;
+    if (document.getElementById('status')) {
+        document.getElementById('status').innerText += `\n[${performance.now().toFixed(2)}] ` + i;
+    }
 }
 
 // ref: http://stackoverflow.com/questions/32633585/how-do-you-convert-to-half-floats-in-javascript

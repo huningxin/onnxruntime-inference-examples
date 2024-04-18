@@ -353,7 +353,11 @@ async function processAudioBuffer() {
         // ignore slient, inaudible audio output, i.e. '[BLANK_AUDIO]'
         if (!blacklistTags.includes(ret)) {
             if (subAudioChunks.length > 0) {
-                subText += ret;
+                if (accumulateSubChunks) {
+                    subText = ret;
+                } else {
+                    subText += ret;
+                }
                 recognition._onresult(subText, false);
             } else {
                 subText = '';

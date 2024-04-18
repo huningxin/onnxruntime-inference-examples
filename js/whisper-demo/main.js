@@ -38,6 +38,8 @@ let speechState = SpeechStates.UNINITIALIZED;
 
 let streamingNode = null;
 let sourceNode = null;
+let audioSourceNode = null;
+let streamSourceNode = null;
 let audioChunks = []; // member {isSubChunk: boolean, data: Float32Array}
 let subAudioChunks = [];
 let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
@@ -140,8 +142,8 @@ export async function process_audio(audio, starttime, idx, pos, textarea) {
 
 let recognition;
 
-// start speech
-export async function startSpeech(recognitionClient) {
+// start speech recognition for mic or an audio source if it presents.
+export async function startSpeech(recognitionClient, audio_src) {
     if (!lastSpeechCompleted) {
         log('Last speech-to-text has not completed yet, try later...');
         return false;
@@ -149,7 +151,7 @@ export async function startSpeech(recognitionClient) {
     recognition = recognitionClient;
     recognition._onstart();
     speechState = SpeechStates.PROCESSING;
-    await captureAudioStream();
+    await captureAudioStream(audio_src);
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: false });
     }
@@ -171,6 +173,17 @@ export async function stopSpeech() {
             await processAudioBuffer();
         }
     }
+
+    if (sourceNode) {
+        sourceNode.disconnect();
+        sourceNode = null;
+    }
+
+    if (streamingNode) {
+        streamingNode.disconnect();
+        streamingNode = null;
+    }
+
     recognition._onend();
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());
@@ -182,13 +195,13 @@ export async function stopSpeech() {
 }
 
 // use AudioWorklet API to capture real-time audio
-async function captureAudioStream() {
+async function captureAudioStream(audio_src) {
     try {
         if (context && context.state === 'suspended') {
             await context.resume();
         }
         // Get user's microphone and connect it to the AudioContext.
-        if (!stream) {
+        if (!stream && !audio_src) {
             stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -199,68 +212,84 @@ async function captureAudioStream() {
                 }
             });
         }
-        if (streamingNode) {
-            return;
-        }
 
         VAD = await VADBuilder();
         vad = new VAD(VADMode.AGGRESSIVE, kSampleRate);
 
-        // clear output context
-        // textarea.value = '';
-        sourceNode = new MediaStreamAudioSourceNode(context, { mediaStream: stream });
-        await context.audioWorklet.addModule(`${baseUrl}/streaming_processor.js`);
-        const streamProperties = {
-            numberOfChannels: 1,
-            sampleRate: context.sampleRate,
-            chunkLength: chunkLength,
-        };
-        streamingNode = new AudioWorkletNode(
-            context,
-            'streaming-processor',
-            {
-                processorOptions: streamProperties,
-            },
-        );
+        if (audio_src && !audioSourceNode) {
+            audioSourceNode = new MediaElementAudioSourceNode(context, { mediaElement: audio_src });
+        }
 
-        streamingNode.port.onmessage = async (e) => {
-            if (e.data.message === 'START_TRANSCRIBE') {
-                const frame = VAD.floatTo16BitPCM(e.data.buffer); // VAD requires Int16Array input
-                const res = vad.processBuffer(frame);
-                // has voice
-                if (res == VADEvent.VOICE) {
-                    singleAudioChunk = concatBuffer(singleAudioChunk, e.data.buffer);
-                    // meet max audio chunk length for a single process, split it.
-                    if (singleAudioChunk.length >= kSampleRate * maxChunkLength) {
-                        if (subAudioChunkLength == 0) {
-                            // subAudioChunkLength >= kSampleRate * maxChunkLength
-                            subAudioChunkLength = singleAudioChunk.length;
+        if (!audio_src && !streamSourceNode) {
+            streamSourceNode = new MediaStreamAudioSourceNode(context, { mediaStream: stream });
+        }
+
+        if (!streamingNode) {
+            await context.audioWorklet.addModule(`${baseUrl}/streaming_processor.js`);
+            const streamProperties = {
+                numberOfChannels: 1,
+                sampleRate: context.sampleRate,
+                chunkLength: chunkLength,
+            };
+
+            streamingNode = new AudioWorkletNode(
+                context,
+                'streaming-processor',
+                {
+                    processorOptions: streamProperties,
+                },
+            );
+
+            streamingNode.port.onmessage = async (e) => {
+                if (e.data.message === 'START_TRANSCRIBE') {
+                    const frame = VAD.floatTo16BitPCM(e.data.buffer); // VAD requires Int16Array input
+                    const res = vad.processBuffer(frame);
+                    // has voice
+                    if (res == VADEvent.VOICE) {
+                        singleAudioChunk = concatBuffer(singleAudioChunk, e.data.buffer);
+                        // meet max audio chunk length for a single process, split it.
+                        if (singleAudioChunk.length >= kSampleRate * maxChunkLength) {
+                            if (subAudioChunkLength == 0) {
+                                // subAudioChunkLength >= kSampleRate * maxChunkLength
+                                subAudioChunkLength = singleAudioChunk.length;
+                            }
+                            audioChunks.push({ 'isSubChunk': true, 'data': singleAudioChunk });
+                            singleAudioChunk = null;
                         }
-                        audioChunks.push({ 'isSubChunk': true, 'data': singleAudioChunk });
-                        singleAudioChunk = null;
+
+                        silenceAudioCounter = 0;
+                    } else { // no voice
+                        silenceAudioCounter++;
+                        // if only one silence chunk exists between two voice chunks,
+                        // just treat it as a continous audio chunk.
+                        if (singleAudioChunk != null && silenceAudioCounter > 1) {
+                            audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
+                            singleAudioChunk = null;
+                        }
                     }
 
-                    silenceAudioCounter = 0;
-                } else { // no voice
-                    silenceAudioCounter++;
-                    // if only one silence chunk exists between two voice chunks,
-                    // just treat it as a continous audio chunk.
-                    if (singleAudioChunk != null && silenceAudioCounter > 1) {
-                        audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
-                        singleAudioChunk = null;
+                    // new audio is coming, and no audio is processing
+                    if (lastProcessingCompleted && audioChunks.length > 0) {
+                        await processAudioBuffer();
                     }
                 }
+            };
+        }
 
-                // new audio is coming, and no audio is processing
-                if (lastProcessingCompleted && audioChunks.length > 0) {
-                    await processAudioBuffer();
-                }
-            }
-        };
+        if (audio_src) {
+            sourceNode = audioSourceNode;
+        } else {
+            sourceNode = streamSourceNode;
+        }
 
         sourceNode
             .connect(streamingNode)
             .connect(context.destination);
+
+        if (audio_src) {
+            // Play audio source to speaker.
+            sourceNode.connect(context.destination);
+        }
     } catch (e) {
         recognition._onerror({
             error: 'audio-capture',

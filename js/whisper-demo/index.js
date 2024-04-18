@@ -58,13 +58,13 @@ function ready() {
 
 const recognitionClient = {
     _onstart: () => {
-        log('recognitionClient._onstart');
+        console.log('recognitionClient._onstart');
     },
     _onend: () => {
-        log('recognitionClient._onend');
+        console.log('recognitionClient._onend');
     },
     _onresult: (transcript, isFinal) => {
-        log(`recognitionClient._onresult: transcript: ${transcript}, isFinal: ${isFinal}`);
+        console.log(`recognitionClient._onresult: transcript: ${transcript}, isFinal: ${isFinal}`);
         if (!isFinal) {
             textarea.value = speechToText + transcript;
         } else {
@@ -74,7 +74,7 @@ const recognitionClient = {
         textarea.scrollTop = textarea.scrollHeight;
     },
     _onerror: (e) => {
-        log(`recognitionClient._onresult: ${e}`);
+        log(`Speech error: ${e}`);
     }
 };
 
@@ -106,8 +106,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     // click on Speech
     speech.addEventListener("click", async (e) => {
         if (e.currentTarget.innerText == "Start Speech") {
-            if (await startSpeech(recognitionClient)) {
+            // If audio has a source, do speech recognition from it otherwise from a mic.
+            if (await startSpeech(recognitionClient, audio_src.readyState ? audio_src : undefined)) {
                 speech.innerText = "Stop Speech";
+            }
+            if (audio_src.readyState) {
+                audio_src.play();
             }
         }
         else {
@@ -124,7 +128,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // drop file
     document.getElementById("file-upload").onchange = function (evt) {
         let target = evt.target || window.event.src, files = target.files;
-        audio_src.src = URL.createObjectURL(files[0]);
+        if (files.length > 0) {
+            audio_src.src = URL.createObjectURL(files[0]);
+        } else {
+            audio_src.src = '';
+        }
     }
 
     if (await initWhisper(ort, AutoProcessor, AutoTokenizer, options)) {
@@ -134,7 +142,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // transcribe audio source
 async function transcribe_file() {
-    if (audio_src.src == "") {
+    if (!audio_src.readyState) {
         log("Error: set some Audio input");
         return;
     }

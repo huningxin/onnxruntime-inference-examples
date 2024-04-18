@@ -34,7 +34,10 @@ function updateConfig() {
             options.dataType = pair[1];
         }
         if (pair[0] == 'maxChunkLength') {
-            options.maxChunkLength = parseFloat(pair[1]);
+            options.maxChunkLength = parseInt(pair[1]);
+        }
+        if (pair[0] == 'verbose') {
+            options.verbose = pair[1].toLowerCase() === 'true';
         }
     }
 }

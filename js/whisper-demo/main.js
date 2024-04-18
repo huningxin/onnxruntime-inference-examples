@@ -44,6 +44,7 @@ let audioChunks = []; // member {isSubChunk: boolean, data: Float32Array}
 let subAudioChunks = [];
 let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
 let maxChunkLength = 1; // max audio length for an audio processing
+let verbose = false;
 let silenceAudioCounter = 0;
 // check if last audio processing is completed, to avoid race condition
 let lastProcessingCompleted = true;
@@ -87,6 +88,9 @@ function updateConfig(options) {
         if (options.maxChunkLength !== undefined) {
             maxChunkLength = options.maxChunkLength;
         }
+        if (options.verbose !== undefined) {
+            verbose = options.verbose;
+        }
     }
 }
 
@@ -101,7 +105,7 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
         const whisper_url = location.href.includes('github.io') ?
             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
             `${baseUrl}/models/`;
-        whisper = new Whisper(whisper_url, provider, dataType, ort, AutoProcessor, AutoTokenizer);
+        whisper = new Whisper(whisper_url, provider, dataType, ort, AutoProcessor, AutoTokenizer, verbose);
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();
@@ -301,30 +305,36 @@ async function captureAudioStream(audio_src) {
 
 async function processAudioBuffer() {
     lastProcessingCompleted = false;
-    let processBuffer = audioChunks[0].data;
+    let processBuffer;
+    const audioChunk = audioChunks.shift();
     // it is sub audio chunk, need to do rectification at last sub chunk
-    if (audioChunks[0].isSubChunk) {
-        subAudioChunks.push(processBuffer);
+    if (audioChunk.isSubChunk) {
+        subAudioChunks.push(audioChunk.data);
         // if the speech is pause, and it is the last audio chunk, concat the subAudioChunks to do rectification
         if (speechState == SpeechStates.PAUSED && audioChunks.length == 1) {
             processBuffer = concatBufferArray(subAudioChunks);
             subAudioChunks = []; // clear subAudioChunks
+        } else if (subAudioChunks.length * maxChunkLength >= 10) {
+            // if total length of subAudioChunks >= 10 sec,
+            // force to break it from subAudioChunks to reduce latency
+            // because it has to wait for more than 10 sec to do audio processing.
+            processBuffer = concatBufferArray(subAudioChunks);
+            subAudioChunks = [];
+        } else {
+            processBuffer = audioChunk.data;
         }
     } else {
-        // concat all subAudoChunks to do rectification
+        // Slience detected, concat all subAudoChunks to do rectification
         if (subAudioChunks.length > 0) {
-            subAudioChunks.push(processBuffer); // append sub chunk's next neighbor
+            subAudioChunks.push(audioChunk.data); // append sub chunk's next neighbor
             processBuffer = concatBufferArray(subAudioChunks);
             subAudioChunks = []; // clear subAudioChunks
+        } else {
+            // No other subAudioChunks, just process this one.
+            processBuffer = audioChunk.data;
         }
     }
-    // if total length of subAudioChunks >= 10 sec,
-    // force to break it from subAudioChunks to reduce latency
-    // because it has to wait for more than 10 sec to do audio processing.
-    if (subAudioChunks.length * maxChunkLength >= 10) {
-        processBuffer = concatBufferArray(subAudioChunks);
-        subAudioChunks = [];
-    }
+
     // ignore too small audio chunk, e.g. 0.16 sec
     // per testing, audios less than 0.16 sec are almost blank audio
     if (processBuffer.length > kSampleRate * 0.16) {
@@ -332,9 +342,6 @@ async function processAudioBuffer() {
         const ret = await whisper.run(processBuffer);
         console.log(`${processBuffer.length / kSampleRate} sec audio processing time: ${((performance.now() - start) / 1000).toFixed(2)} sec`);
         console.log('result:', ret);
-        // TODO? throttle the un-processed audio chunks?
-        //In order to catch up latest audio to achieve real-time effects.
-        console.log('un-processed audio chunk length: ', (audioChunks.length - 1));
         // ignore slient, inaudible audio output, i.e. '[BLANK_AUDIO]'
         if (!blacklistTags.includes(ret)) {
             if (subAudioChunks.length > 0) {
@@ -345,10 +352,14 @@ async function processAudioBuffer() {
                 recognition._onresult(ret, true);
             }
         }
+    } else {
+        console.warn(`drop too small audio chunk: ${processBuffer.length / kSampleRate}`);
     }
     lastProcessingCompleted = true;
-    audioChunks.shift(); // remove processed chunk
     if (audioChunks.length > 0) {
+        // TODO? throttle the un-processed audio chunks?
+        // In order to catch up latest audio to achieve real-time effects.
+        console.log('un-processed audio chunk length: ', (audioChunks.length));
         // recusive audioBuffer in audioChunks
         lastSpeechCompleted = false;
         await processAudioBuffer();

@@ -39,6 +39,9 @@ function updateConfig() {
         if (pair[0] == 'verbose') {
             options.verbose = pair[1].toLowerCase() === 'true';
         }
+        if (pair[0] == 'accumulateSubChunks') {
+            options.accumulateSubChunks = pair[1].toLowerCase() === 'true';
+        }
     }
 }
 

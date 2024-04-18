@@ -42,6 +42,7 @@ let audioSourceNode = null;
 let streamSourceNode = null;
 let audioChunks = []; // member {isSubChunk: boolean, data: Float32Array}
 let subAudioChunks = [];
+let accumulateSubChunks = false; // Accumulate the sub audio chunks for one processing.
 let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
 let maxChunkLength = 1; // max audio length for an audio processing
 let verbose = false;
@@ -90,6 +91,9 @@ function updateConfig(options) {
         }
         if (options.verbose !== undefined) {
             verbose = options.verbose;
+        }
+        if (options.accumulateSubChunks !== undefined) {
+            accumulateSubChunks = options.accumulateSubChunks;
         }
     }
 }
@@ -321,7 +325,11 @@ async function processAudioBuffer() {
             processBuffer = concatBufferArray(subAudioChunks);
             subAudioChunks = [];
         } else {
-            processBuffer = audioChunk.data;
+            if (accumulateSubChunks) {
+                processBuffer = concatBufferArray(subAudioChunks);
+            } else {
+                processBuffer = audioChunk.data;
+            }
         }
     } else {
         // Slience detected, concat all subAudoChunks to do rectification

@@ -22,8 +22,8 @@ const MODELS = {
         },
         {
             name: "sam-b-decoder",
-            url: "https://huggingface.co/schmuell/sam-b-fp16/resolve/main/sam_vit_b_01ec64.decoder.onnx",
-            // url: "./models/sam_vit_b_01ec64.decoder.onnx",
+            // url: "https://huggingface.co/schmuell/sam-b-fp16/resolve/main/sam_vit_b_01ec64.decoder.onnx",
+            url: "./models/sam_vit_b_01ec64.decoder-fp16.onnx",
             size: 17,
         },
     ],

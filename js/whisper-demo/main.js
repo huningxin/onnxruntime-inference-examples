@@ -16,6 +16,7 @@ const kDelay = 100;
 let whisper;
 
 let provider = 'webnn';
+let deviceType = 'gpu';
 let dataType = 'float16';
 
 // audio context
@@ -83,6 +84,9 @@ function updateConfig(options) {
         if (options.provider !== undefined) {
             provider = options.provider;
         }
+        if (options.deviceType !== undefined) {
+            deviceType = options.deviceType;
+        }
         if (options.dataType !== undefined) {
             dataType = options.dataType;
         }
@@ -109,7 +113,7 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
         const whisper_url = location.href.includes('github.io') ?
             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
             `${baseUrl}/models/`;
-        whisper = new Whisper(whisper_url, provider, dataType, ort, AutoProcessor, AutoTokenizer, verbose);
+        whisper = new Whisper(whisper_url, provider, deviceType, dataType, ort, AutoProcessor, AutoTokenizer, verbose);
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();

@@ -23,12 +23,16 @@ const options = {};
 function updateConfig() {
     const query = window.location.search.substring('1');
     const providers = ['webnn', 'webgpu', 'wasm'];
+    const deviceTypes = ['cpu', 'gpu', 'npu']
     const dataTypes = ['float32', 'float16'];
     let vars = query.split('&');
     for (let i = 0; i < vars.length; i++) {
         let pair = vars[i].split('=');
         if (pair[0] == 'provider' && providers.includes(pair[1])) {
             options.provider = pair[1];
+        }
+        if (pair[0] == 'deviceType' && deviceTypes.includes(pair[1])) {
+            options.deviceType = pair[1];
         }
         if (pair[0] == 'dataType' && dataTypes.includes(pair[1])) {
             options.dataType = pair[1];

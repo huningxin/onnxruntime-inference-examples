@@ -5,15 +5,16 @@ import {log, getModelOPFS, convertToFloat32Array, convertToUint16Array} from './
 
 // wrapper around onnxruntime and model
 export class Whisper {
-    constructor(url, provider, dataType, ort, AutoProcessor, AutoTokenizer, verbose = false) {
+    constructor(url, provider, deviceType = 'gpu', dataType, ort, AutoProcessor, AutoTokenizer, verbose = false) {
         this.url = url;
         this.provider = provider;
+        this.deviceType = deviceType;
         this.dataType = dataType;
         this.ort = ort;
         this.ort.env.wasm.simd = true;
         this.AutoProcessor = AutoProcessor;
         this.AutoTokenizer = AutoTokenizer;
-        this.verbose = verbose
+        this.verbose = verbose;
 
         this.models = {
             'encoder': { url: 'whisper_base_encoder_lm.onnx', sess: null },
@@ -44,7 +45,7 @@ export class Whisper {
         const options = {
             executionProviders: [{
                 name: this.provider,
-                deviceType: 'gpu',
+                deviceType: this.deviceType,
             }],
         };
 

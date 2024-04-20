@@ -93,6 +93,9 @@ function updateConfig(options) {
         if (options.maxChunkLength !== undefined) {
             maxChunkLength = options.maxChunkLength;
         }
+        if (options.chunkLength !== undefined) {
+            chunkLength = options.chunkLength;
+        }
         if (options.verbose !== undefined) {
             verbose = options.verbose;
         }
@@ -238,10 +241,9 @@ async function captureAudioStream(audio_src) {
 
         if (!streamingNode) {
             await context.audioWorklet.addModule(`${baseUrl}/streaming_processor.js`);
+            const minBufferSize = vad.getMinBufferSize(chunkLength * kSampleRate);
             const streamProperties = {
-                numberOfChannels: 1,
-                sampleRate: context.sampleRate,
-                chunkLength: chunkLength,
+                minBufferSize: minBufferSize,
             };
 
             streamingNode = new AudioWorkletNode(
@@ -375,7 +377,11 @@ async function processAudioBuffer() {
     if (audioChunks.length > 0) {
         // TODO? throttle the un-processed audio chunks?
         // In order to catch up latest audio to achieve real-time effects.
-        console.log('un-processed audio chunk length: ', (audioChunks.length));
+        let unprocessedAudioLength = 0;
+        for (let i = 0; i < audioChunks.length; ++i) {
+            unprocessedAudioLength += audioChunks[i].data.length;
+        }
+        console.warn(`un-processed audio chunk length: ${(unprocessedAudioLength / kSampleRate)} sec`);
         // recusive audioBuffer in audioChunks
         lastSpeechCompleted = false;
         await processAudioBuffer();

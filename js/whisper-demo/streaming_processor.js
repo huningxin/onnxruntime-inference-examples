@@ -2,18 +2,15 @@ class StreamingProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
-        this.sampleRate = 0;
         this.publishInterval = 0;
         this.index = 0; // index of this._streamingBuffer data
         if (options && options.processorOptions) {
             const {
-                sampleRate,
-                chunkLength,
+                minBufferSize,
             } = options.processorOptions;
 
-            this.sampleRate = sampleRate;
             // We will use a timer to gate our messages; this one will publish at 60hz
-            this.publishInterval = chunkLength * sampleRate;
+            this.publishInterval = minBufferSize;
         }
         this.stopProcessing = false;
         this._streamingBuffer = new Float32Array(this.publishInterval);

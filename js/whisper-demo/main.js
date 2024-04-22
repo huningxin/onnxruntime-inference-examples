@@ -10,7 +10,8 @@ import VADBuilder, { VADMode, VADEvent } from "./vad/embedded.js";
 import { lcm } from "./vad/math.js";
 
 const kSampleRate = 16000;
-const kSteps = kSampleRate * 30;
+const kMaxAudioLengthInSec = 30;
+const kSteps = kSampleRate * kMaxAudioLengthInSec;
 
 // whisper class
 let whisper;
@@ -46,7 +47,7 @@ let subAudioChunks = [];
 let accumulateSubChunks = false; // Accumulate the sub audio chunks for one processing.
 let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
 let maxChunkLength = 1; // max audio length in sec for a single audio processing
-let maxAudioLength = 10; // max audio length in sec for rectification
+let maxAudioLength = 10; // max audio length in sec for rectification, must not be greater than 30 sec
 let maxUnprocessedAudioLength = 0;
 let maxProcessAudioBufferLength = 0;
 let verbose = false;
@@ -100,7 +101,7 @@ function updateConfig(options) {
             chunkLength = options.chunkLength;
         }
         if (options.maxAudioLength !== undefined) {
-            maxAudioLength = options.maxAudioLength;
+            maxAudioLength = Math.min(options.maxAudioLength, kMaxAudioLengthInSec);
         }
         if (options.verbose !== undefined) {
             verbose = options.verbose;
@@ -148,7 +149,7 @@ export async function process_audio(audio, starttime, idx, pos, textarea, progre
             // append results to textarea 
             textarea.value += ret;
             textarea.scrollTop = textarea.scrollHeight;
-            await process_audio(audio, starttime, idx + kSteps, pos + 30, textarea, progress);
+            await process_audio(audio, starttime, idx + kSteps, pos + kMaxAudioLengthInSec, textarea, progress);
         } catch (e) {
             log(`Error: ${e}`);
         }

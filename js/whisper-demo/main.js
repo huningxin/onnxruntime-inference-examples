@@ -7,10 +7,11 @@
 import { Whisper } from './whisper.js';
 import { log, concatBuffer, concatBufferArray } from './utils.js';
 import VADBuilder, { VADMode, VADEvent } from "./vad/embedded.js";
+import { lcm } from "./vad/math.js";
 
 const kSampleRate = 16000;
-const kSteps = kSampleRate * 30;
-const kDelay = 100;
+const kMaxAudioLengthInSec = 30;
+const kSteps = kSampleRate * kMaxAudioLengthInSec;
 
 // whisper class
 let whisper;
@@ -45,7 +46,10 @@ let audioChunks = []; // member {isSubChunk: boolean, data: Float32Array}
 let subAudioChunks = [];
 let accumulateSubChunks = false; // Accumulate the sub audio chunks for one processing.
 let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
-let maxChunkLength = 1; // max audio length for an audio processing
+let maxChunkLength = 1; // max audio length in sec for a single audio processing
+let maxAudioLength = 10; // max audio length in sec for rectification, must not be greater than 30 sec
+let maxUnprocessedAudioLength = 0;
+let maxProcessAudioBufferLength = 0;
 let verbose = false;
 let silenceAudioCounter = 0;
 // check if last audio processing is completed, to avoid race condition
@@ -93,6 +97,12 @@ function updateConfig(options) {
         if (options.maxChunkLength !== undefined) {
             maxChunkLength = options.maxChunkLength;
         }
+        if (options.chunkLength !== undefined) {
+            chunkLength = options.chunkLength;
+        }
+        if (options.maxAudioLength !== undefined) {
+            maxAudioLength = Math.min(options.maxAudioLength, kMaxAudioLengthInSec);
+        }
         if (options.verbose !== undefined) {
             verbose = options.verbose;
         }
@@ -126,7 +136,7 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
 }
 
 // process audio buffer
-export async function process_audio(audio, starttime, idx, pos, textarea) {
+export async function process_audio(audio, starttime, idx, pos, textarea, progress) {
     if (idx < audio.length) {
         // not done
         try {
@@ -139,7 +149,7 @@ export async function process_audio(audio, starttime, idx, pos, textarea) {
             // append results to textarea 
             textarea.value += ret;
             textarea.scrollTop = textarea.scrollHeight;
-            process_audio(audio, starttime, idx + kSteps, pos + 30, textarea);
+            await process_audio(audio, starttime, idx + kSteps, pos + kMaxAudioLengthInSec, textarea, progress);
         } catch (e) {
             log(`Error: ${e}`);
         }
@@ -167,6 +177,8 @@ export async function startSpeech(recognitionClient, audio_src) {
     if (streamingNode != null) {
         streamingNode.port.postMessage({ message: "STOP_PROCESSING", data: false });
     }
+    maxUnprocessedAudioLength = 0;
+    maxProcessAudioBufferLength = 0;
     return true;
 }
 
@@ -196,6 +208,8 @@ export async function stopSpeech() {
         streamingNode = null;
     }
 
+    console.warn(`max process audio length: ${maxProcessAudioBufferLength} sec`);
+    console.warn(`max unprocessed audio length: ${maxUnprocessedAudioLength} sec`);
     recognition._onend();
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());
@@ -238,10 +252,11 @@ async function captureAudioStream(audio_src) {
 
         if (!streamingNode) {
             await context.audioWorklet.addModule(`${baseUrl}/streaming_processor.js`);
+            // 128 is the minimum length for audio worklet processing.
+            const minBufferSize = vad.getMinBufferSize(lcm(chunkLength * kSampleRate, 128));
+            console.log(`VAD minBufferSize: ${minBufferSize / kSampleRate} sec`);
             const streamProperties = {
-                numberOfChannels: 1,
-                sampleRate: context.sampleRate,
-                chunkLength: chunkLength,
+                minBufferSize: minBufferSize,
             };
 
             streamingNode = new AudioWorkletNode(
@@ -322,8 +337,8 @@ async function processAudioBuffer() {
         if (speechState == SpeechStates.PAUSED && audioChunks.length == 1) {
             processBuffer = concatBufferArray(subAudioChunks);
             subAudioChunks = []; // clear subAudioChunks
-        } else if (subAudioChunks.length * maxChunkLength >= 10) {
-            // if total length of subAudioChunks >= 10 sec,
+        } else if (subAudioChunks.length * maxChunkLength >= maxAudioLength) {
+            // if total length of subAudioChunks >= maxAudioLength sec,
             // force to break it from subAudioChunks to reduce latency
             // because it has to wait for more than 10 sec to do audio processing.
             processBuffer = concatBufferArray(subAudioChunks);
@@ -349,11 +364,14 @@ async function processAudioBuffer() {
 
     // ignore too small audio chunk, e.g. 0.16 sec
     // per testing, audios less than 0.16 sec are almost blank audio
-    if (processBuffer.length > kSampleRate * 0.16) {
+    const processBufferLength = processBuffer.length / kSampleRate;
+    if (processBufferLength > 0.16) {
         const start = performance.now();
         const ret = await whisper.run(processBuffer);
-        console.log(`${processBuffer.length / kSampleRate} sec audio processing time: ${((performance.now() - start) / 1000).toFixed(2)} sec`);
-        console.log('result:', ret);
+        console.log(`${processBufferLength} sec audio processing time: ${((performance.now() - start) / 1000).toFixed(2)} sec`);
+        if (verbose) {
+            console.log('result:', ret);
+        }
         // ignore slient, inaudible audio output, i.e. '[BLANK_AUDIO]'
         if (!blacklistTags.includes(ret)) {
             if (subAudioChunks.length > 0) {
@@ -369,13 +387,24 @@ async function processAudioBuffer() {
             }
         }
     } else {
-        console.warn(`drop too small audio chunk: ${processBuffer.length / kSampleRate}`);
+        console.warn(`drop too small audio chunk: ${processBufferLength}`);
+    }
+    if (processBufferLength > maxProcessAudioBufferLength) {
+        maxProcessAudioBufferLength = processBufferLength;
     }
     lastProcessingCompleted = true;
     if (audioChunks.length > 0) {
         // TODO? throttle the un-processed audio chunks?
         // In order to catch up latest audio to achieve real-time effects.
-        console.log('un-processed audio chunk length: ', (audioChunks.length));
+        let unprocessedAudioLength = 0;
+        for (let i = 0; i < audioChunks.length; ++i) {
+            unprocessedAudioLength += audioChunks[i].data.length;
+        }
+        unprocessedAudioLength /= kSampleRate;
+        console.warn(`un-processed audio chunk length: ${(unprocessedAudioLength)} sec`);
+        if (unprocessedAudioLength > maxUnprocessedAudioLength) {
+            maxUnprocessedAudioLength = unprocessedAudioLength;
+        }
         // recusive audioBuffer in audioChunks
         lastSpeechCompleted = false;
         await processAudioBuffer();

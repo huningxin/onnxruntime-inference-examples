@@ -40,6 +40,12 @@ function updateConfig() {
         if (pair[0] == 'maxChunkLength') {
             options.maxChunkLength = parseFloat(pair[1]);
         }
+        if (pair[0] == 'chunkLength') {
+            options.chunkLength = parseFloat(pair[1]);
+        }
+        if (pair[0] == 'maxAudioLength') {
+            options.maxAudioLength = parseFloat(pair[1]);
+        }
         if (pair[0] == 'verbose') {
             options.verbose = pair[1].toLowerCase() === 'true';
         }
@@ -68,23 +74,24 @@ function ready() {
 
 const recognitionClient = {
     _onstart: () => {
-        console.log('recognitionClient._onstart');
+        log('Recognition starts');
     },
     _onend: () => {
-        console.log('recognitionClient._onend');
+        log('Recognition ends');
     },
     _onresult: (transcript, isFinal) => {
-        console.log(`recognitionClient._onresult: transcript: ${transcript}, isFinal: ${isFinal}`);
+        console.log(`${isFinal ? 'final' : 'interim'} result:${transcript}`);
         if (!isFinal) {
             textarea.value = speechToText + transcript;
         } else {
+            transcript += '\r\n';
             speechToText += transcript;
             textarea.value = speechToText;
         }
         textarea.scrollTop = textarea.scrollHeight;
     },
     _onerror: (e) => {
-        log(`Speech error: ${e}`);
+        log(`Recognition error: ${e}`);
     }
 };
 
@@ -169,7 +176,7 @@ async function transcribe_file() {
         source.start();
         const renderedBuffer = await offlineContext.startRendering();
         const audio = renderedBuffer.getChannelData(0);
-        await process_audio(audio, performance.now(), 0, 0, textarea);
+        await process_audio(audio, performance.now(), 0, 0, textarea, progress);
         ready();
     }
     catch (e) {

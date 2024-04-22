@@ -11,7 +11,6 @@ import { lcm } from "./vad/math.js";
 
 const kSampleRate = 16000;
 const kSteps = kSampleRate * 30;
-const kDelay = 100;
 
 // whisper class
 let whisper;
@@ -135,10 +134,6 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
     return true;
 }
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // process audio buffer
 export async function process_audio(audio, starttime, idx, pos, textarea, progress) {
     if (idx < audio.length) {
@@ -147,14 +142,12 @@ export async function process_audio(audio, starttime, idx, pos, textarea, progre
             // update progress bar
             progress.style.width = (idx * 100 / audio.length).toFixed(1) + "%";
             progress.textContent = progress.style.width;
-            await sleep(kDelay);
             // run inference for 30 sec
             const xa = audio.slice(idx, idx + kSteps);
             const ret = await whisper.run(xa);
             // append results to textarea 
             textarea.value += ret;
             textarea.scrollTop = textarea.scrollHeight;
-            await sleep(kDelay);
             await process_audio(audio, starttime, idx + kSteps, pos + 30, textarea, progress);
         } catch (e) {
             log(`Error: ${e}`);

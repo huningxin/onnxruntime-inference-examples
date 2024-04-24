@@ -14,7 +14,7 @@ const kMaxAudioLengthInSec = 30;
 const kSteps = kSampleRate * kMaxAudioLengthInSec;
 
 // whisper class
-let whisper;
+let whisper = null;
 
 let provider = 'webnn';
 let deviceType = 'gpu';
@@ -128,10 +128,12 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
         const whisper_url = location.href.includes('github.io') ?
             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
             `${baseUrl}/models/`;
-        whisper = new Whisper(whisper_url, provider, deviceType, dataType, ort, AutoProcessor, AutoTokenizer, mask_4d, verbose);
-        await whisper.create_whisper_processor();
-        await whisper.create_whisper_tokenizer();
-        await whisper.create_ort_sessions();
+        if (!whisper) {
+            whisper = new Whisper(whisper_url, provider, deviceType, dataType, ort, AutoProcessor, AutoTokenizer, mask_4d, verbose);
+            await whisper.create_whisper_processor();
+            await whisper.create_whisper_tokenizer();
+            await whisper.create_ort_sessions();
+        }
         streamingNode = null;
         sourceNode = null;
         audioSourceNode = null;

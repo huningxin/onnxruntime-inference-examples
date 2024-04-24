@@ -1,8 +1,10 @@
+// Import our custom CSS
+import './scss/styles.scss'
+
 async function updateUi() {
   // Access settings from storage with default values.
   const {
     provider,
-    dataType,
     deviceType,
     chunkLength,
     maxChunkLength,
@@ -11,7 +13,7 @@ async function updateUi() {
     provider: 'webnn',
     dataType: 'float16',
     deviceType: 'gpu',
-    chunkLength: '0.1',
+    chunkLength: '0.08',
     maxChunkLength: 2,
     accumulateSubChunks: false,
     maxAudioLength: 10
@@ -19,7 +21,6 @@ async function updateUi() {
 
   // Update UI with current values.
   document.getElementById("provider").value = provider;
-  document.getElementById("dataType").value = dataType;
   document.getElementById("deviceType").value = deviceType;
   document.getElementById("chunkLength").value = chunkLength;
   document.getElementById("maxChunkLength").value = maxChunkLength;
@@ -29,17 +30,32 @@ async function updateUi() {
 
 async function onSave() {
   const provider = document.getElementById("provider").value;
-  const dataType = document.getElementById("dataType").value;
   const deviceType = document.getElementById("deviceType").value;
   const chunkLength = document.getElementById("chunkLength").value;
   const maxChunkLength = document.getElementById("maxChunkLength").value;
   const accumulateSubChunks = document.getElementById("accumulateSubChunks").checked;
   const maxAudioLength = document.getElementById("maxAudioLength").value;
 
+  const warning = document.getElementById("warning")
+
+  if (parseFloat(maxChunkLength) < parseFloat(chunkLength)) {
+    warning.innerHTML = "Interim audio length should be larger than VAD audio chunk length.";
+    warning.style.display = "block";
+    return;
+  }
+
+  if (parseFloat(maxAudioLength) < parseFloat(maxChunkLength)) {
+    warning.innerHTML = "Final audio length should be larger than interim audio length.";
+    warning.style.display = "block";
+    return;
+  }
+
+  warning.innerHTML = "";
+  warning.style.display = "none";
+
   // Save to storage.
   chrome.storage.local.set({
     provider,
-    dataType,
     deviceType,
     chunkLength,
     maxChunkLength,

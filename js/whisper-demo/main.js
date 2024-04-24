@@ -96,11 +96,11 @@ function updateConfig(options) {
         if (options.dataType !== undefined) {
             dataType = options.dataType;
         }
-        if (options.maxChunkLength !== undefined) {
-            maxChunkLength = options.maxChunkLength;
-        }
         if (options.chunkLength !== undefined) {
             chunkLength = options.chunkLength;
+        }
+        if (options.maxChunkLength !== undefined) {
+            maxChunkLength = options.maxChunkLength;
         }
         if (options.maxAudioLength !== undefined) {
             maxAudioLength = Math.min(options.maxAudioLength, kMaxAudioLengthInSec);

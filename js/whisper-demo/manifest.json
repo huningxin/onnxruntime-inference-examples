@@ -38,8 +38,5 @@
     "externally_connectable": {
         "matches": ["<all_urls>"]
     },
-    "options_ui": {
-        "page": "options.html",
-        "open_in_tab": false
-    }
+    "options_page": "options.html"
   }

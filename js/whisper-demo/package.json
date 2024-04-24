@@ -4,7 +4,11 @@
   "description": "whisper browser extension",
   "scripts": {
     "build": "webpack",
-    "dev": "webpack --watch"
+    "dev": "webpack --watch",
+    "css-compile": "sass --style compressed --source-map --embed-sources --no-error-css --load-path=node_modules scss/:css/",
+    "css-lint": "stylelint scss/",
+    "css-prefix": "postcss --replace css/styles.css --use autoprefixer --map",
+    "css": "npm-run-all css-compile css-prefix"
   },
   "type": "module",
   "author": "ningxin.hu@intel.com",
@@ -12,10 +16,19 @@
   "devDependencies": {
     "copy-webpack-plugin": "^11.0.0",
     "webpack": "^5.79.0",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "autoprefixer": "^10.4.19",
+    "css-loader": "^6.10.0",
+    "html-webpack-plugin": "^5.6.0",
+    "postcss-loader": "^8.1.1",
+    "sass": "^1.72.0",
+    "sass-loader": "^14.1.1",
+    "style-loader": "^3.3.4"
   },
   "dependencies": {
+    "@popperjs/core": "^2.11.8",
     "@xenova/transformers": "^2.15.1",
+    "bootstrap": "^5.3.3",
     "onnxruntime-web": "^1.18.0-dev.20240311-5479124834"
   }
 }

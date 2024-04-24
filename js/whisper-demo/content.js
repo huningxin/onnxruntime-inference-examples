@@ -8,9 +8,8 @@ function loadScript(scriptName, options) {
 }
 const options = await chrome.storage.local.get({
   provider: 'webnn',
-  dataType: 'float16',
   deviceType: 'gpu',
-  chunkLength: '0.1',
+  chunkLength: '0.08',
   maxChunkLength: 2,
   accumulateSubChunks: false,
   maxAudioLength: 10

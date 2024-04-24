@@ -3,49 +3,63 @@
   <head>
     <meta charset="UTF-8" />
     <title>Whisper Extension Options</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <script defer src="options.js"></script>
   </head>
   <body>
-    <div>
-      Execution Provider:
-      <select id="provider">
-        <option value="webnn">webnn</option>
-        <option value="webgpu">webgpu</option>
-        <option value="wasm">wasm</option>
-      </select>
-    </div>
-    <div>
-      Data Type:
-      <select id="dataType">
-        <option value="float16">float16</option>
-        <option value="float32">float32</option>
-      </select>
-    </div>
-    <div>
-      Device Type:
-      <select id="deviceType">
-        <option value="gpu">GPU</option>
-        <option value="npu">NPU</option>
-      </select>
-    </div>
-    <div>
-      Audio chunk length (in secs) for voice activity detection:
-      <input type="number" id="chunkLength" defaultValue="0.2" value="0.2" />
-    </div>
-    <div>
-      Max audio chunk length (in secs) for an interim recognition:
-      <input type="number" id="maxChunkLength" defaultValue="2" value="2" />
-    </div>
-    <div>
-      <input type="checkbox" id="accumulateSubChunks">
-      <label for="accumulateSubChunks"> Accumulate audio chunks</label>
-    </div>
-    <div>
-      Max audio length (in secs) for a final recognition:
-      <input type="number" id="maxAudioLength" defaultValue="10" value="10" />
-    </div>
-    <div>
-      <input type="button" value="Save" id="save" />
+    <div class="container-sm">
+      <header class="d-flex justify-content-between align-items-md-center pb-3 mb-5 border-bottom">
+        <h1 class="h4">
+          Whisper Extension Options
+        </h1>
+      </header>
+      <form>
+        <div class="mb-3">
+          Execution Provider:
+          <select class="form-select" id="provider">
+            <option value="webnn">webnn</option>
+            <option value="webgpu">webgpu</option>
+            <option value="wasm">wasm</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="deviceType" class="form-label">Device Type:</label>
+          <select class="form-select" id="deviceType">
+            <option value="gpu">GPU</option>
+            <option value="npu">NPU</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="chunkLength" class="form-label">
+            Audio chunk length (in secs) for Voice Activity Detection.
+            (Only voice audio chunks are accumulated for a speech recognition. The detection of silence would trigger a final speech recognition.)
+          </label>
+          <input class="form-control" type="number" id="chunkLength" defaultValue="0.08" value="0.08" step="0.04" min="0.04" max="1"/>
+        </div>
+        <div class="mb-3">
+          <label for="maxChunkLength" class="form-label">
+            Max audio length (in secs) for interim speech recognition.
+            (When voice audio chunks are accumulated to this length, an interim speech recognition is triggered.)
+          </label>
+          <input class="form-control" type="number" id="maxChunkLength" defaultValue="2" value="2" min="1" max="10"/>
+        </div>
+        <div class="mb-3 form-check">
+          <input class="form-check-input" type="checkbox" id="accumulateSubChunks">
+          <label class="form-check-label" for="accumulateSubChunks">
+            Accumulate previous audio chunks for an interim speech recognition.
+          </label>
+        </div>
+        <div class="mb-3">
+          <label for="maxAudioLength" class="form-label">
+            Max audio length (in secs) for final speech recognition.
+            (When interim audio chunks are accumulated to this length, a final speech recognition is triggered.)
+          </label>
+          <input class="form-control" type="number" id="maxAudioLength" defaultValue="10" value="10" min="1", max="30"/>
+        </div>
+        <div class="alert alert-warning" role="alert" style="display: none;" id="warning">
+        </div>
+        <input class="btn btn-primary" type="button" value="Save" id="save" />
+      </form>
     </div>
   </body>
 </html>

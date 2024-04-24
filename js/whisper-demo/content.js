@@ -8,8 +8,12 @@ function loadScript(scriptName, options) {
 }
 const options = await chrome.storage.local.get({
   provider: 'webnn',
-  dataType: 'fp16',
-  maxChunkLength: 1
+  dataType: 'float16',
+  deviceType: 'gpu',
+  chunkLength: '0.1',
+  maxChunkLength: 2,
+  accumulateSubChunks: false,
+  maxAudioLength: 10
 });
 options.extensionId = chrome.runtime.id;
 loadScript('polyfill.js', options);

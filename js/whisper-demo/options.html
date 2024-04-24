@@ -22,8 +22,27 @@
       </select>
     </div>
     <div>
-      Max Audio Chunk Length (seconds):
-      <input type="number" id="maxChunkLength" defaultValue="1" value="1" />
+      Device Type:
+      <select id="deviceType">
+        <option value="gpu">GPU</option>
+        <option value="npu">NPU</option>
+      </select>
+    </div>
+    <div>
+      Audio chunk length (in secs) for voice activity detection:
+      <input type="number" id="chunkLength" defaultValue="0.2" value="0.2" />
+    </div>
+    <div>
+      Max audio chunk length (in secs) for an interim recognition:
+      <input type="number" id="maxChunkLength" defaultValue="2" value="2" />
+    </div>
+    <div>
+      <input type="checkbox" id="accumulateSubChunks">
+      <label for="accumulateSubChunks"> Accumulate audio chunks</label>
+    </div>
+    <div>
+      Max audio length (in secs) for a final recognition:
+      <input type="number" id="maxAudioLength" defaultValue="10" value="10" />
     </div>
     <div>
       <input type="button" value="Save" id="save" />

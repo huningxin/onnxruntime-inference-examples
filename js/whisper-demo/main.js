@@ -132,6 +132,14 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();
+        streamingNode = null;
+        sourceNode = null;
+        audioSourceNode = null;
+        streamSourceNode = null;
+        silenceAudioCounter = 0;
+        lastProcessingCompleted = true;
+        lastSpeechCompleted = true;
+        subText = '';
         log("Ready to transcribe...");
     } catch (e) {
         log(`Error: ${e}`);
@@ -215,6 +223,7 @@ export async function stopSpeech() {
 
     console.warn(`max process audio length: ${maxProcessAudioBufferLength} sec`);
     console.warn(`max unprocessed audio length: ${maxUnprocessedAudioLength} sec`);
+    subText = '';
     recognition._onend();
     // if (stream) {
     //     stream.getTracks().forEach(track => track.stop());

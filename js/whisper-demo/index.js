@@ -87,7 +87,6 @@ const recognitionClient = {
         if (!isFinal) {
             textarea.value = speechToText + transcript;
         } else {
-            transcript += '\r\n';
             speechToText += transcript;
             textarea.value = speechToText;
         }

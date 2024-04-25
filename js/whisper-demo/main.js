@@ -64,6 +64,7 @@ let vad = null;
 
 let singleAudioChunk = null; // one time audio process buffer
 let subAudioChunkLength = 0; // length of a sub audio chunk
+let prevSubText = '';
 let subText = '';
 
 let baseUrl = '.';
@@ -305,7 +306,7 @@ async function captureAudioStream(audio_src) {
                         silenceAudioCounter++;
                         // if only one silence chunk exists between two voice chunks,
                         // just treat it as a continous audio chunk.
-                        if (singleAudioChunk != null && silenceAudioCounter > 1) {
+                        if (singleAudioChunk != null && silenceAudioCounter > 0) {
                             audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
                             singleAudioChunk = null;
                         }
@@ -392,7 +393,20 @@ async function processAudioBuffer() {
         if (!blacklistTags.includes(ret)) {
             if (subAudioChunks.length > 0) {
                 if (accumulateSubChunks) {
+                    prevSubText = subText;
                     subText = ret;
+                    if (subAudioChunks.length > 1) {
+                        console.log(`prevSubText: ${prevSubText}`);
+                        console.log(`subText:     ${subText}`);
+                        prevSubText = prevSubText.replace(/\.$/, '');
+                        const indexOfPrevSubText = subText.toLowerCase().indexOf(prevSubText.toLowerCase());
+                        console.log(`subText.indexOf(prevSubText): ${indexOfPrevSubText}`);
+                        if (indexOfPrevSubText === 0) {
+                            recognition._onresult(prevSubText, true);
+                            subText = subText.slice(prevSubText.length);
+                            subAudioChunks = subAudioChunks.slice(-1);
+                        }
+                    }
                 } else {
                     subText += ret;
                 }

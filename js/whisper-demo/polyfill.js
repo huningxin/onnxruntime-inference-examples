@@ -1,7 +1,7 @@
 import * as ort from 'onnxruntime-web/webgpu';
 import { AutoProcessor, AutoTokenizer, env } from '@xenova/transformers';
 
-import { startSpeech, stopSpeech, initWhisper } from './main.js';
+import { startSpeech, stopSpeech, initWhisper, updateConfig } from './main.js';
 
 const options = JSON.parse(document.currentScript.dataset.params);
 
@@ -97,3 +97,15 @@ class WhisperSpeechRecognition {
 };
 
 window.webkitSpeechRecognition = WhisperSpeechRecognition;
+
+let port;
+try {
+    port = chrome.runtime.connect(options.extensionId);
+} catch (e) {
+    console.error('Could not connect to extension: ' + e.message);
+}
+console.log(`Connect to extension ${options.extensionId}`);
+
+port.onMessage.addListener(function(msg) {
+    updateConfig(msg);
+});

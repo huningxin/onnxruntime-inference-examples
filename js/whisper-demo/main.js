@@ -81,7 +81,8 @@ const blacklistTags = [
     '[silent]',
 ];
 
-function updateConfig(options) {
+export function updateConfig(options) {
+    console.log('update config: ');
     console.log(options);
     if (options !== undefined) {
         if (options.baseUrl !== undefined) {

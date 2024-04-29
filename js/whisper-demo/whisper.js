@@ -20,8 +20,6 @@ export class Whisper {
         this.AutoTokenizer = AutoTokenizer;
         this.verbose = verbose;
         
-        // Hack to get MLContext after WebNN EP initialized.
-        this.context = wnn_context_;
         this.models = {
             'encoder': { url: 'whisper_base_encoder_lm.onnx', sess: null, graph: null },
             'decoder': { url: 'whisper_base_decoder_static_non_kvcache_lm.onnx', sess: null, graph: null},
@@ -69,13 +67,16 @@ export class Whisper {
                 } else {
                     this.models[name]['sess'] = await this.ort.InferenceSession.create(url, options);
                 }
-                // Hack to get the MLGraph in the created session.
-                this.models[name]['graph'] = wnn_graph_;
+                // Hack to get the MLGraph from the created session.
+                this.models[name].graph = window.current_wnn_graph;
                 log(`Model ${url} loaded`);
             } catch (e) {
                 log(`Error: ${e}`);
             }
         };
+
+        // Hack to get MLContext from WebNN EP.
+        this.context = window.g_wnn_context;
 
         this.models['encoder']['inputs'] = {'input_features': this.context.createBuffer({size: 1 * 80 * 3000 * FP16Bytes})};
         this.models['encoder']['outputs'] = {'last_hidden_state': this.context.createBuffer({size: 1 * 1500 * 512 * FP16Bytes})};
@@ -83,7 +84,7 @@ export class Whisper {
         // MLBuffers for non KV cache decoder
         this.models['decoder']['inputs'] = {
             'input_ids': this.context.createBuffer({size: 1 * 4 * Int32Bytes}),
-            'attention_mask': this.context.createBuffer({size: 1 * 4 * Int64Bytes}),
+            'attention_mask': this.context.createBuffer({size: 1 * 4 * Int32Bytes}),
             // Use encoder's last hidden_state buffer.
             'encoder_hidden_states': this.models['encoder']['outputs'].last_hidden_state,
         };
@@ -110,8 +111,7 @@ export class Whisper {
             this.models['decoder_cached']['inputs'][`past_key_values.${i}.decoder.value`] = this.context.createBuffer({size: 1 * 8 * 127 * 64 * FP16Bytes});
         }
         this.models['decoder_cached']['outputs'] = {
-            // Reuse non KV cache decoder's logits buffer.
-            'logits': this.models['decoder']['outputs'].logits,
+            'logits': this.context.createBuffer({size: 1 * 1 * 51865 * FP16Bytes}),
         };
         for (let i = 0; i < 6; ++i) {
             this.models['decoder_cached']['outputs'][`present_key_values.${i}.decoder.key`] = this.context.createBuffer({size: 1 * 8 * 1 * 64 * FP16Bytes});
@@ -121,6 +121,7 @@ export class Whisper {
         await this.build_pad_cache_graph();
         await this.build_increment_position_ids_graphs();
         await this.build_update_attention_mask_graphs();
+        await this.build_update_cache_graphs();
     }
 
     async build_pad_cache_graph() {
@@ -145,7 +146,7 @@ export class Whisper {
     }
 
     dispatch_graph(name) {
-        this.context.dispatch(this.models.name.graph, this.models.name.inputs, this.models.name.outputs);
+        this.context.dispatch(this.models[name].graph, this.models[name].inputs, this.models[name].outputs);
     }
 
     async build_increment_position_ids_graphs() {
@@ -220,16 +221,16 @@ export class Whisper {
         const outputs = {};
         for (let i = 0; i < 6; ++i) {
             // Transpose HSD (batch = 1) [head, squence_length, hidden_dimension] to SHD, so the scatter can only update the S axis.
-            const perm = [1, 0, 2];
+            const permutation = [1, 0, 2];
             const past_kv_desc = {dataType: 'float16', dimensions: [8, 127, 64]};
-            const pask_key = builder.transpose(builder.input(`past_key_values.${i}.decoder.key`, past_kv_desc), perm);
-            const past_value = builder.transpose(builder.input(`past_key_values.${i}.decoder.value`, past_kv_desc), perm);
+            const past_key = builder.transpose(builder.input(`past_key_values.${i}.decoder.key`, past_kv_desc), {permutation});
+            const past_value = builder.transpose(builder.input(`past_key_values.${i}.decoder.value`, past_kv_desc), {permutation});
             const present_kv_desc = {dataType: 'float16', dimensions: [8, 1, 64]};
-            const present_key = builder.transpose(builder.input(`present_key_values.${i}.decoder.key`, present_kv_desc), perm);
-            const present_value = builder.transpose(builder.input(`present_key_values.${i}.decoder.value`, present_kv_desc), perm);
+            const present_key = builder.transpose(builder.input(`present_key_values.${i}.decoder.key`, present_kv_desc), {permutation});
+            const present_value = builder.transpose(builder.input(`present_key_values.${i}.decoder.value`, present_kv_desc), {permutation});
 
-            outputs[`past_key_values.${i}.decoder.key`] = builder.transpose(builder.scatterNd(pask_key, indices, present_key), perm);
-            outputs[`past_key_values.${i}.decoder.value`] = builder.transpose(builder.scatterNd(past_value, indices, present_value), perm);
+            outputs[`past_key_values.${i}.decoder.key`] = builder.transpose(builder.scatterNd(past_key, indices, present_key), {permutation});
+            outputs[`past_key_values.${i}.decoder.value`] = builder.transpose(builder.scatterNd(past_value, indices, present_value), {permutation});
         }
 
         this.models['update_cache'] = {};
@@ -241,8 +242,8 @@ export class Whisper {
             this.models['update_cache'].inputs[`past_key_values.${i}.decoder.value`] = this.models['decoder_cached']['inputs'][`past_key_values.${i}.decoder.value`];
             this.models['update_cache'].inputs[`present_key_values.${i}.decoder.key`] = this.models['decoder_cached']['outputs'][`present_key_values.${i}.decoder.key`];
             this.models['update_cache'].inputs[`present_key_values.${i}.decoder.value`] = this.models['decoder_cached']['outputs'][`present_key_values.${i}.decoder.value`];
-            this.models['update_cache'].outputs[`past_key_values.${i}.decoder.key`] = this.context.createBuffer({size: 8 * 127 * 64});
-            this.models['update_cache'].outputs[`past_key_values.${i}.decoder.value`] = this.context.createBuffer({size: 8 * 127 * 64});
+            this.models['update_cache'].outputs[`past_key_values.${i}.decoder.key`] = this.context.createBuffer({size: 8 * 127 * 64 * FP16Bytes});
+            this.models['update_cache'].outputs[`past_key_values.${i}.decoder.value`] = this.context.createBuffer({size: 8 * 127 * 64 * FP16Bytes});
         }
 
         // past_key_values = temp_past_key_values;
@@ -250,10 +251,10 @@ export class Whisper {
         for (let i = 0; i < 6; ++i) {
             // Transpose HSD (batch = 1) [head, squence_length, hidden_dimension] to SHD, so the scatter can only update the S axis.
             const past_kv_desc = {dataType: 'float16', dimensions: [8, 127, 64]};
-            const temp_pask_key = builder.input(`temp_past_key_values.${i}.decoder.key`, past_kv_desc);
+            const temp_past_key = builder.input(`temp_past_key_values.${i}.decoder.key`, past_kv_desc);
             const temp_past_value = builder.input(`temp_past_key_values.${i}.decoder.value`, past_kv_desc);
-            outputs[`past_key_values.${i}.decoder.key`] = builder.identity(temp_pask_key);
-            outputs[`past_key_values.${i}.decoder.value`] = builder.identity(temp_pask_value);
+            copy_outputs[`past_key_values.${i}.decoder.key`] = builder.identity(temp_past_key);
+            copy_outputs[`past_key_values.${i}.decoder.value`] = builder.identity(temp_past_value);
         }
         this.models['copy_cache'] = {};
         this.models['copy_cache'].graph = await builder.build(copy_outputs);
@@ -290,8 +291,8 @@ export class Whisper {
         start = performance.now();
         
         // Upload input data and dispatch graph
-        this.context.writeBuffer(this.models['encoder'].inputs.input_features, input_features_data, input_features_data.length);
-        this.context.dispatch(this.models['encoder'].graph, this.models['encoder'].inputs, this.models['encoder'].outputs);
+        this.context.writeBuffer(this.models['encoder'].inputs.input_features, input_features_data, 0, input_features_data.length);
+        this.dispatch_graph('encoder');
 
         if (this.verbose) {
             console.log(`  encoder inference time: ${(performance.now() - start).toFixed(2)} ms`);
@@ -312,9 +313,9 @@ export class Whisper {
         // const decoder_output = await this.models['decoder']['sess'].run(decoder_input);
 
         // Upload tokens and attention_mask and dispatch the decoder
-        this.context.writeBuffer(this.models['decoder'].inputs.input_ids, new Int32Array(tokens), tokens.length);
-        this.context.writeBuffer(this.models['decoder'].inputs.attention_mask, new Int32Array(attention_mask), attention_mask.length);
-        this.context.dispatch(this.models['decoder'].graph, this.models['decoder'].inputs, this.models['decoder'].outputs);
+        this.context.writeBuffer(this.models['decoder'].inputs.input_ids, new Int32Array(tokens), 0, tokens.length);
+        this.context.writeBuffer(this.models['decoder'].inputs.attention_mask, new Int32Array(attention_mask), 0, attention_mask.length);
+        this.dispatch_graph('decoder');
 
         if (this.verbose) {
             console.log(`  non-kv cache decoder inference time: ${(performance.now() - start).toFixed(2)} ms`);
@@ -333,30 +334,26 @@ export class Whisper {
         // add token to final buffer
         tokens = tokens.concat(new_token);
 
-        // for 2+ inference, we don't need encoder hidden states as input to OV model
-        delete decoder_input.encoder_hidden_states;
-
         // -----------------------------------DECODER 2 INFERENCE-----------------------------------------
         // prepare inputs for decoder kv cache
 
         // create 1x1 array for input_ids
         // decoder_input['input_ids'] = new this.ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
-        this.context.writeBuffer(this.models['decoder_cached'].inputs.input_ids, new Int32Array([new_token]), 1);
+        this.context.writeBuffer(this.models['decoder_cached'].inputs.input_ids, new Int32Array([new_token]), 0, 1);
 
         // pad attention mask to max_seq_length
         // decoder_input['attention_mask'] = new this.ort.Tensor('int64', attention_mask_update(this.ort, new BigInt64Array([1n, 1n, 1n, 1n]),
         //     0, this.max_sequence_length, this.num_init_tokens), [1, 128]);
         const initial_attention_mask = attention_mask_update(this.ort, new BigInt64Array([1n, 1n, 1n, 1n]), 0, this.max_sequence_length, this.num_init_tokens)
-        this.context.writeBuffer(this.models['decoder_cached'].inputs.attention_mask, initial_attention_mask.buffer, initial_attention_mask.byteLength);
+        this.context.writeBuffer(this.models['decoder_cached'].inputs.attention_mask, initial_attention_mask.buffer, 0, initial_attention_mask.byteLength);
 
         // create position_ids as input, value should be same of No. of prefill tokens
         // decoder_input['position_ids'] = new this.ort.Tensor('int32', new Int32Array([this.num_init_tokens]), [1]);
-        this.context.writeBuffer(this.models['decoder_cached'].inputs.position_ids, new Int32Array([this.num_init_tokens]), 1);
+        this.context.writeBuffer(this.models['decoder_cached'].inputs.position_ids, new Int32Array([this.num_init_tokens]), 0, 1);
 
         // // modify the self attention kv cache in place
         this.dispatch_graph('pad_cache');
 
-        const position_ids = new Int32Array(decoder_input['position_ids'].cpuData.buffer);
         // run complete inference for every item in dataset
         for (let i = 4; i < this.max_sequence_length; i++) {
             if (this.verbose) {
@@ -364,14 +361,18 @@ export class Whisper {
             }
             start = performance.now();
             // const decoder_cached_output = await this.models['decoder_cached']['sess'].run(decoder_input);
-            this.context.dispatch(this.models['decoder_cached'].graph, this.models['decoder_cached'].inputs, this.models['decoder_cached'].outputs);
-            if (this.verbose) {
-                console.log(`  decoder iteration ${i-3}: inference time: ${(performance.now() - start).toFixed(2)} ms`);
-            }
+            this.dispatch_graph('decoder_cached');
+
             start = performance.now();
             // find out the token with highest probability, cast INT64 to INT32
             // let logits = decoder_cached_output['logits']['cpuData'];
             const logitsBuffer = await this.context.readBuffer(this.models['decoder_cached'].outputs.logits);
+
+            if (this.verbose) {
+                console.log(`  decoder iteration ${i-3}: inference time: ${(performance.now() - start).toFixed(2)} ms`);
+            }
+
+            start = performance.now();
             let logits = new Uint16Array(logitsBuffer);
 
             if (this.dataType == 'float16') {
@@ -385,10 +386,17 @@ export class Whisper {
             if (new_token == 50257) {
                 break;
             }
+
+            if (this.verbose) {
+                console.log(`  decoder iteration ${i-3}: get new token: ${(performance.now() - start).toFixed(2)} ms`);
+            }
+
+            start = performance.now();
+
             // ----------------------------------POST PROCESSING---------------------------------------
             // the following code creates decoder input for the next inference
             // decoder_input['input_ids'] = new this.ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
-            this.context.writeBuffer(this.models['decoder_cached'].inputs.input_ids, new Int32Array([new_token]), 1);
+            this.context.writeBuffer(this.models['decoder_cached'].inputs.input_ids, new Int32Array([new_token]), 0, 1);
 
             // increment the position_ids
             // position_ids[0] = position_ids[0] + 1;

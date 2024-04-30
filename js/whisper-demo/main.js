@@ -48,6 +48,8 @@ let subAudioChunks = [];
 let accumulateSubChunks = false; // Accumulate the sub audio chunks for one processing.
 let chunkLength = 1 / 25; // length in sec of one audio chunk from AudioWorklet processor, recommended by vad
 let maxChunkLength = 1; // max audio length in sec for a single audio processing
+let adaptiveMaxChunkLength = false; // audo adjust max chunk length according to un-processed audio.
+let originalMaxChunkLength = maxChunkLength;
 let maxAudioLength = 10; // max audio length in sec for rectification, must not be greater than 30 sec
 let maxUnprocessedAudioLength = 0;
 let maxProcessAudioBufferLength = 0;
@@ -63,7 +65,6 @@ let VAD = null;
 let vad = null;
 
 let singleAudioChunk = null; // one time audio process buffer
-let subAudioChunkLength = 0; // length of a sub audio chunk
 let prevSubText = '';
 let subText = '';
 
@@ -103,6 +104,10 @@ export function updateConfig(options) {
         }
         if (options.maxChunkLength !== undefined) {
             maxChunkLength = options.maxChunkLength;
+            originalMaxChunkLength = maxChunkLength;
+        }
+        if (options.adaptiveMaxChunkLength !== undefined) {
+            adaptiveMaxChunkLength = options.adaptiveMaxChunkLength;
         }
         if (options.maxAudioLength !== undefined) {
             maxAudioLength = Math.min(options.maxAudioLength, kMaxAudioLengthInSec);
@@ -294,10 +299,7 @@ async function captureAudioStream(audio_src) {
                         singleAudioChunk = concatBuffer(singleAudioChunk, e.data.buffer);
                         // meet max audio chunk length for a single process, split it.
                         if (singleAudioChunk.length >= kSampleRate * maxChunkLength) {
-                            if (subAudioChunkLength == 0) {
-                                // subAudioChunkLength >= kSampleRate * maxChunkLength
-                                subAudioChunkLength = singleAudioChunk.length;
-                            }
+                            console.log(`new sub audio chunk length ${singleAudioChunk.length / kSampleRate}`);
                             audioChunks.push({ 'isSubChunk': true, 'data': singleAudioChunk });
                             singleAudioChunk = null;
                         }
@@ -308,6 +310,7 @@ async function captureAudioStream(audio_src) {
                         // if only one silence chunk exists between two voice chunks,
                         // just treat it as a continous audio chunk.
                         if (singleAudioChunk != null && silenceAudioCounter > 0) {
+                            console.log(`new final audio chunk length ${singleAudioChunk.length/ kSampleRate}`);
                             audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
                             singleAudioChunk = null;
                         }
@@ -433,6 +436,10 @@ async function processAudioBuffer() {
         }
         unprocessedAudioLength /= kSampleRate;
         console.warn(`un-processed audio chunk length: ${(unprocessedAudioLength)} sec`);
+        if (adaptiveMaxChunkLength && unprocessedAudioLength >= maxChunkLength) {
+            maxChunkLength = Math.min(maxAudioLength, maxChunkLength + 1);
+            console.warn(`Increase maxChunkLength to ${maxChunkLength}`);
+        }
         if (unprocessedAudioLength > maxUnprocessedAudioLength) {
             maxUnprocessedAudioLength = unprocessedAudioLength;
         }
@@ -440,6 +447,10 @@ async function processAudioBuffer() {
         lastSpeechCompleted = false;
         await processAudioBuffer();
     } else {
+        if (adaptiveMaxChunkLength && maxChunkLength > originalMaxChunkLength) {
+            maxChunkLength = Math.max(originalMaxChunkLength, Math.floor(maxChunkLength / 2));
+            console.warn(`Set maxChunkLength to ${maxChunkLength}`);
+        }
         lastSpeechCompleted = true;
     }
 }

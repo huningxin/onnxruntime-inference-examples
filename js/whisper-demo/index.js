@@ -40,6 +40,9 @@ function updateConfig() {
         if (pair[0] == 'maxChunkLength') {
             options.maxChunkLength = parseFloat(pair[1]);
         }
+        if (pair[0] == 'adaptiveMaxChunkLength') {
+            options.adaptiveMaxChunkLength = pair[1].toLowerCase() === 'true';
+        }
         if (pair[0] == 'chunkLength') {
             options.chunkLength = parseFloat(pair[1]);
         }

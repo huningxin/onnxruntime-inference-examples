@@ -7,12 +7,13 @@ async function updateUi() {
     deviceType,
     chunkLength,
     maxChunkLength,
+    adaptiveMaxChunkLength,
     accumulateSubChunks,
     maxAudioLength } = await chrome.storage.local.get({
-    dataType: 'float16',
     deviceType: 'gpu',
-    chunkLength: '0.08',
-    maxChunkLength: 2,
+    chunkLength: '0.2',
+    maxChunkLength: 1,
+    adaptiveMaxChunkLength: true,
     accumulateSubChunks: false,
     maxAudioLength: 10
   });
@@ -21,26 +22,28 @@ async function updateUi() {
   document.getElementById("deviceType").value = deviceType;
   document.getElementById("chunkLength").value = chunkLength;
   document.getElementById("maxChunkLength").value = maxChunkLength;
+  document.getElementById("adaptiveMaxChunkLength").checked = adaptiveMaxChunkLength;
   document.getElementById("accumulateSubChunks").checked = accumulateSubChunks;
   document.getElementById("maxAudioLength").value = maxAudioLength;
 }
 
 async function onSave() {
   const deviceType = document.getElementById("deviceType").value;
-  const chunkLength = document.getElementById("chunkLength").value;
-  const maxChunkLength = document.getElementById("maxChunkLength").value;
+  const chunkLength = parseFloat(document.getElementById("chunkLength").value);
+  const maxChunkLength = parseFloat(document.getElementById("maxChunkLength").value);
+  const adaptiveMaxChunkLength = document.getElementById("adaptiveMaxChunkLength").checked;
   const accumulateSubChunks = document.getElementById("accumulateSubChunks").checked;
-  const maxAudioLength = document.getElementById("maxAudioLength").value;
+  const maxAudioLength = parseFloat(document.getElementById("maxAudioLength").value);
 
   const warning = document.getElementById("warning")
 
-  if (parseFloat(maxChunkLength) < parseFloat(chunkLength)) {
+  if (maxChunkLength < chunkLength) {
     warning.innerHTML = "Interim audio length should be larger than VAD audio chunk length.";
     warning.style.display = "block";
     return;
   }
 
-  if (parseFloat(maxAudioLength) < parseFloat(maxChunkLength)) {
+  if (maxAudioLength < maxChunkLength) {
     warning.innerHTML = "Final audio length should be larger than interim audio length.";
     warning.style.display = "block";
     return;
@@ -54,6 +57,7 @@ async function onSave() {
     deviceType,
     chunkLength,
     maxChunkLength,
+    adaptiveMaxChunkLength,
     accumulateSubChunks,
     maxAudioLength
   });

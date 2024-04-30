@@ -9,9 +9,9 @@ function loadScript(scriptName, options) {
 const options = await chrome.storage.local.get({
   provider: 'webnn',
   deviceType: 'gpu',
-  chunkLength: '0.2',
-  maxChunkLength: 1,
-  adaptiveMaxChunkLength: true,
+  chunkLength: '0.08',
+  maxChunkLength: 10,
+  adaptiveMaxChunkLength: false,
   accumulateSubChunks: false,
   maxAudioLength: 10
 });

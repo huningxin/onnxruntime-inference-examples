@@ -11,9 +11,9 @@ async function updateUi() {
     accumulateSubChunks,
     maxAudioLength } = await chrome.storage.local.get({
     deviceType: 'gpu',
-    chunkLength: '0.2',
-    maxChunkLength: 1,
-    adaptiveMaxChunkLength: true,
+    chunkLength: '0.08',
+    maxChunkLength: 10,
+    adaptiveMaxChunkLength: false,
     accumulateSubChunks: false,
     maxAudioLength: 10
   });

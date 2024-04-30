@@ -299,7 +299,7 @@ async function captureAudioStream(audio_src) {
                         singleAudioChunk = concatBuffer(singleAudioChunk, e.data.buffer);
                         // meet max audio chunk length for a single process, split it.
                         if (singleAudioChunk.length >= kSampleRate * maxChunkLength) {
-                            console.log(`new sub audio chunk length ${singleAudioChunk.length / kSampleRate}`);
+                            console.log(`${singleAudioChunk.length / kSampleRate} secs sub audio chunk`);
                             audioChunks.push({ 'isSubChunk': true, 'data': singleAudioChunk });
                             singleAudioChunk = null;
                         }
@@ -310,7 +310,7 @@ async function captureAudioStream(audio_src) {
                         // if only one silence chunk exists between two voice chunks,
                         // just treat it as a continous audio chunk.
                         if (singleAudioChunk != null && silenceAudioCounter > 0) {
-                            console.log(`new final audio chunk length ${singleAudioChunk.length/ kSampleRate}`);
+                            console.log(`${singleAudioChunk.length / kSampleRate} secs final audio chunk`);
                             audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
                             singleAudioChunk = null;
                         }
@@ -386,10 +386,11 @@ async function processAudioBuffer() {
     // ignore too small audio chunk, e.g. 0.16 sec
     // per testing, audios less than 0.16 sec are almost blank audio
     const processBufferLength = processBuffer.length / kSampleRate;
-    if (processBufferLength > 0.16) {
+    if (processBufferLength > 0.32) {
         const start = performance.now();
         const ret = await whisper.run(processBuffer);
-        console.log(`${processBufferLength} sec audio processing time: ${((performance.now() - start) / 1000).toFixed(2)} sec`);
+        const processedTime = (performance.now() - start) / 1000;
+        console.log(`${processBufferLength} sec audio processed in ${processedTime.toFixed(2)} sec: ${(processBufferLength / processedTime).toFixed(2)}X speedup`);
         if (verbose) {
             console.log('result:', ret);
         }
@@ -419,6 +420,8 @@ async function processAudioBuffer() {
                 subText = '';
                 recognition._onresult(ret, true);
             }
+        } else {
+            console.warn(`Blank results: ${ret}`);
         }
     } else {
         console.warn(`drop too small audio chunk: ${processBufferLength}`);
@@ -449,7 +452,7 @@ async function processAudioBuffer() {
     } else {
         if (adaptiveMaxChunkLength && maxChunkLength > originalMaxChunkLength) {
             maxChunkLength = Math.max(originalMaxChunkLength, Math.floor(maxChunkLength / 2));
-            console.warn(`Set maxChunkLength to ${maxChunkLength}`);
+            console.console(`Set maxChunkLength to ${maxChunkLength}`);
         }
         lastSpeechCompleted = true;
     }

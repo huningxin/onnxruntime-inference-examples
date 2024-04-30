@@ -303,13 +303,8 @@ async function captureAudioStream(audio_src) {
                             audioChunks.push({ 'isSubChunk': true, 'data': singleAudioChunk });
                             singleAudioChunk = null;
                         }
-
-                        silenceAudioCounter = 0;
                     } else { // no voice
-                        silenceAudioCounter++;
-                        // if only one silence chunk exists between two voice chunks,
-                        // just treat it as a continous audio chunk.
-                        if (singleAudioChunk != null && silenceAudioCounter > 0) {
+                        if (singleAudioChunk != null) {
                             console.log(`${singleAudioChunk.length / kSampleRate} secs final audio chunk`);
                             audioChunks.push({ 'isSubChunk': false, 'data': singleAudioChunk });
                             singleAudioChunk = null;

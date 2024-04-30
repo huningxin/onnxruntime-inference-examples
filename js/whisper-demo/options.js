@@ -4,13 +4,11 @@ import './scss/styles.scss'
 async function updateUi() {
   // Access settings from storage with default values.
   const {
-    provider,
     deviceType,
     chunkLength,
     maxChunkLength,
     accumulateSubChunks,
     maxAudioLength } = await chrome.storage.local.get({
-    provider: 'webnn',
     dataType: 'float16',
     deviceType: 'gpu',
     chunkLength: '0.08',
@@ -20,7 +18,6 @@ async function updateUi() {
   });
 
   // Update UI with current values.
-  document.getElementById("provider").value = provider;
   document.getElementById("deviceType").value = deviceType;
   document.getElementById("chunkLength").value = chunkLength;
   document.getElementById("maxChunkLength").value = maxChunkLength;
@@ -29,7 +26,6 @@ async function updateUi() {
 }
 
 async function onSave() {
-  const provider = document.getElementById("provider").value;
   const deviceType = document.getElementById("deviceType").value;
   const chunkLength = document.getElementById("chunkLength").value;
   const maxChunkLength = document.getElementById("maxChunkLength").value;
@@ -55,7 +51,6 @@ async function onSave() {
 
   // Save to storage.
   chrome.storage.local.set({
-    provider,
     deviceType,
     chunkLength,
     maxChunkLength,

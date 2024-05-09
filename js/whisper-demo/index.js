@@ -52,6 +52,9 @@ function updateConfig() {
         if (pair[0] == 'accumulateSubChunks') {
             options.accumulateSubChunks = pair[1].toLowerCase() === 'true';
         }
+        if (pair[0] == 'mask_4d') {
+            options.mask_4d = pair[1].toLowerCase() === 'true';
+        }
     }
 }
 
@@ -165,7 +168,7 @@ async function transcribe_file() {
     }
 
     busy();
-    log("start transcribe ...");
+    log("start transcribing...");
     try {
         const buffer = await (await fetch(audio_src.src)).arrayBuffer();
         const audioBuffer = await getAudioContext().decodeAudioData(buffer);

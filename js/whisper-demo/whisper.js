@@ -160,7 +160,7 @@ export class Whisper {
         // pad attention mask to max_seq_length
         const mask_data = attention_mask_update(
             this.ort,
-            this.mask_4d ? new Uint16Array(4) : new BigInt64Array(4).fill(1n),
+            this.mask_4d ? new Uint16Array(4).fill(0) : new BigInt64Array(4).fill(1n),
             0,
             this.max_sequence_length,
             this.num_init_tokens,

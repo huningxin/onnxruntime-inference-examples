@@ -1,11 +1,11 @@
 //'@xenova/transformers';
 import { get_new_tokens } from './generation_utils.js';
 import { attention_mask_update, cache_update } from './post_processing.js';
-import {log, getModelOPFS, convertToFloat32Array, convertToUint16Array} from './utils.js';
+import {log, getModelOPFS, convertToFloat32Array, convertToUint16Array, toHalf} from './utils.js';
 
 // wrapper around onnxruntime and model
 export class Whisper {
-    constructor(url, provider, deviceType = 'gpu', dataType, ort, AutoProcessor, AutoTokenizer, verbose = false) {
+    constructor(url, provider, deviceType = 'gpu', dataType, ort, AutoProcessor, AutoTokenizer, mask_4d=true, verbose = false) {
         this.url = url;
         this.provider = provider;
         this.deviceType = deviceType;
@@ -15,6 +15,7 @@ export class Whisper {
         this.AutoProcessor = AutoProcessor;
         this.AutoTokenizer = AutoTokenizer;
         this.verbose = verbose;
+        this.mask_4d = mask_4d;
 
         this.models = {
             'encoder': { url: 'whisper_base_encoder_lm.onnx', sess: null },
@@ -54,12 +55,17 @@ export class Whisper {
                 let url = this.url + this.models[name]['url'];
                 if (this.dataType == 'float16') {
                     url = url.replace('.onnx', '_fp16_layernorm.onnx');
+                    if (name.includes('decoder') && this.mask_4d) {
+                        url = url.replace('.onnx', '_4dmask.onnx');
+                    }
                 } else {
                     url = url.replace('.onnx', '_layernorm.onnx');
                 }
                 if (!url.startsWith('chrome-extension://')) {
-                    const modelBuffer = await getModelOPFS(`${name}_${this.dataType}`, url, false);
+                    const modelBuffer = await getModelOPFS(url.replace(this.url, ''), url, false);
+                    const start = performance.now();
                     this.models[name]['sess'] = await this.ort.InferenceSession.create(modelBuffer, options);
+                    log(`session creation time: ${(performance.now() - start).toFixed(2)} ms`);
                 } else {
                     this.models[name]['sess'] = await this.ort.InferenceSession.create(url, options);
                 }
@@ -102,11 +108,23 @@ export class Whisper {
         // TODO: CHANGE FROM HARDCODED VALUES
         let tokens = [50258, 50259, 50359, 50363];
         // let tokens = [50258, 50259, 50359, 50364]; // keep timestep token
-        const attention_mask = [1, 1, 1, 1];
+        let attention_mask;
+        if (this.mask_4d) {
+            const min_val = toHalf(-65500);
+            const mask_data = [
+                0, min_val, min_val, min_val,
+                0,       0, min_val, min_val,
+                0,       0,       0, min_val,
+                0,       0,       0,       0,
+            ];
+            attention_mask = new this.ort.Tensor('float16', new Uint16Array(mask_data), [1, 1, 4, 4]);
+        } else {
+            attention_mask = new this.ort.Tensor('int32', new Int32Array(4).fill([1, 1, 1, 1]), [1, 4]);
+        }
         // create decoder input for the first inference
         const decoder_input = {
             'input_ids': new this.ort.Tensor('int32', new Int32Array(tokens), [1, 4]),
-            'attention_mask': new this.ort.Tensor('int32', new Int32Array(attention_mask), [1, 4]),
+            'attention_mask': attention_mask,
             'encoder_hidden_states': last_hidden_state,
         };
         if (this.verbose) {
@@ -140,8 +158,20 @@ export class Whisper {
         decoder_input['input_ids'] = new this.ort.Tensor('int32', new Int32Array([new_token]), [1, 1]);
 
         // pad attention mask to max_seq_length
-        decoder_input['attention_mask'] = new this.ort.Tensor('int64', attention_mask_update(this.ort, new BigInt64Array([1n, 1n, 1n, 1n]),
-            0, this.max_sequence_length, this.num_init_tokens), [1, 128]);
+        const mask_data = attention_mask_update(
+            this.ort,
+            this.mask_4d ? new Uint16Array(4).fill(0) : new BigInt64Array(4).fill(1n),
+            0,
+            this.max_sequence_length,
+            this.num_init_tokens,
+            0,
+            this.mask_4d);
+        if (this.mask_4d) {
+            attention_mask = new this.ort.Tensor('float16', mask_data, [1, 1, 1, 128]);
+        } else {
+            attention_mask = new this.ort.Tensor('int64', mask_data, [1, 128]);
+        }
+        decoder_input['attention_mask'] = attention_mask;
         // create position_ids as input, value should be same of No. of prefill tokens
         decoder_input['position_ids'] = new this.ort.Tensor('int32', new Int32Array([this.num_init_tokens]), [1]);
 
@@ -195,7 +225,7 @@ export class Whisper {
             position_ids[0] = position_ids[0] + 1;
 
             // update mask using position id
-            attention_mask_update(this.ort, decoder_input['attention_mask'].cpuData, i, this.max_sequence_length, this.num_init_tokens, position_ids[0]);
+            attention_mask_update(this.ort, decoder_input['attention_mask'].cpuData, i, this.max_sequence_length, this.num_init_tokens, position_ids[0], this.mask_4d);
             // modify the kv cache in place
             cache_update(this.ort, decoder_input, decoder_cached_output, i, this.max_sequence_length, this.num_init_tokens, position_ids[0], this.dataType);
         }

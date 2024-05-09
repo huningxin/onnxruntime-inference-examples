@@ -61,7 +61,7 @@ export function log(i) {
 }
 
 // ref: http://stackoverflow.com/questions/32633585/how-do-you-convert-to-half-floats-in-javascript
-const toHalf = (function () {
+export const toHalf = (function () {
     var floatView = new Float32Array(1);
     var int32View = new Int32Array(floatView.buffer);
 

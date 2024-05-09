@@ -38,6 +38,7 @@ const SpeechStates = {
 };
 let speechState = SpeechStates.UNINITIALIZED;
 
+let mask_4d = true; // use 4D mask input for decoder models
 let streamingNode = null;
 let sourceNode = null;
 let audioSourceNode = null;
@@ -109,6 +110,9 @@ function updateConfig(options) {
         if (options.accumulateSubChunks !== undefined) {
             accumulateSubChunks = options.accumulateSubChunks;
         }
+        if (options.mask_4d !== undefined) {
+            mask_4d = options.mask_4d;
+        }
     }
 }
 
@@ -123,7 +127,7 @@ export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
         const whisper_url = location.href.includes('github.io') ?
             'https://huggingface.co/lwanming/whisper-base-static-shape/resolve/main/' :
             `${baseUrl}/models/`;
-        whisper = new Whisper(whisper_url, provider, deviceType, dataType, ort, AutoProcessor, AutoTokenizer, verbose);
+        whisper = new Whisper(whisper_url, provider, deviceType, dataType, ort, AutoProcessor, AutoTokenizer, mask_4d, verbose);
         await whisper.create_whisper_processor();
         await whisper.create_whisper_tokenizer();
         await whisper.create_ort_sessions();

@@ -65,6 +65,7 @@ export class Whisper {
                 } else {
                     url = url.replace('.onnx', '_layernorm.onnx');
                 }
+                log(`Loading model: ${url.replace(this.url, '')}`);
                 if (!url.startsWith('chrome-extension://')) {
                     const modelBuffer = await getModelOPFS(url.replace(this.url, ''), url, false);
                     const start = performance.now();

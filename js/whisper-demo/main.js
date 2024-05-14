@@ -121,7 +121,7 @@ function updateConfig(options) {
 export async function initWhisper(ort, AutoProcessor, AutoTokenizer, options) {
     updateConfig(options);
     log(`Execution provider: ${provider}`);
-    log("loading model...");
+    log(`Device type: ${deviceType}`);
     try {
         context = new AudioContext({ sampleRate: kSampleRate });
         const whisper_url = location.href.includes('github.io') ?

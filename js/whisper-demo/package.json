@@ -1,6 +1,6 @@
 {
   "name": "whisper-extension",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "whisper browser extension",
   "scripts": {
     "build": "webpack",
@@ -29,6 +29,6 @@
     "@popperjs/core": "^2.11.8",
     "@xenova/transformers": "^2.15.1",
     "bootstrap": "^5.3.3",
-    "onnxruntime-web": "^1.18.0-dev.20240311-5479124834"
+    "onnxruntime-web": "1.18.0-dev.20240430-204f1f59b9"
   }
 }

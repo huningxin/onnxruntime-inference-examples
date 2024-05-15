@@ -5,9 +5,9 @@ An example project to show how to polyfill [Web Speech API](https://wicg.github.
 ## Getting Started
 1. Clone the repo and enter the project directory.
 1. Download Whisper models and put them into `models` folder:
-   1. https://huggingface.co/lwanming/whisper-base-static-shape/blob/main/whisper_base_encoder_lm_fp16_layernorm.onnx
-   1. https://huggingface.co/lwanming/whisper-base-static-shape/blob/main/whisper_base_decoder_static_kvcache_128_lm_fp16_layernorm.onnx
-   1. https://huggingface.co/lwanming/whisper-base-static-shape/blob/main/whisper_base_decoder_static_non_kvcache_lm_fp16_layernorm.onnx
+   1. https://huggingface.co/lwanming/whisper-base-static-shape/blob/main/whisper_base_encoder_lm_fp16_layernorm_gelu.onnx
+   1. https://huggingface.co/lwanming/whisper-base-static-shape/blob/main/whisper_base_decoder_static_non_kvcache_lm_fp16_layernorm_gelu_4dmask.onnx
+   1. https://huggingface.co/lwanming/whisper-base-static-shape/blob/main/whisper_base_decoder_static_kvcache_128_lm_fp16_layernorm_gelu_4dmask.onnx
 
 1. Install the necessary dependencies:
     ```bash

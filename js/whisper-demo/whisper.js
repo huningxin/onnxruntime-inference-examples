@@ -54,7 +54,7 @@ export class Whisper {
             try {
                 let url = this.url + this.models[name]['url'];
                 if (this.dataType == 'float16') {
-                    if (this.deviceType == 'npu') {
+                    if (this.deviceType == 'npu' || this.deviceType == 'gpu') {
                         url = url.replace('.onnx', '_fp16_layernorm_gelu.onnx');
                     } else {
                         url = url.replace('.onnx', '_fp16_layernorm.onnx');

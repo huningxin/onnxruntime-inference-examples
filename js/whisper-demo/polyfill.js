@@ -1,4 +1,4 @@
-import * as ort from 'onnxruntime-web/webgpu';
+import * as ort from 'onnxruntime-web/all';
 import { AutoProcessor, AutoTokenizer, env } from '@xenova/transformers';
 
 import { startSpeech, stopSpeech, initWhisper, updateConfig } from './main.js';

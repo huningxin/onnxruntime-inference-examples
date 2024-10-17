@@ -24,9 +24,9 @@
         "resources": [
             "polyfill.js",
             "streaming_processor.js",
-            "ort-wasm-simd.wasm",
-            "ort-wasm-simd.jsep.wasm",
-            "ort-wasm-simd-threaded.jsep.mjs",
+            "ort-wasm-simd-threaded.wasm",
+            "ort-wasm-simd-threaded.jsep.wasm",
+            "9aafb4d3326cefcb8809.wasm",
             "models/whisper_base_encoder_lm_fp16_layernorm_gelu.onnx",
             "models/whisper_base_decoder_static_non_kvcache_lm_fp16_layernorm_gelu_4dmask.onnx",
             "models/whisper_base_decoder_static_kvcache_128_lm_fp16_layernorm_gelu_4dmask.onnx",

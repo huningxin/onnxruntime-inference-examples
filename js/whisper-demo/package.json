@@ -29,6 +29,6 @@
     "@popperjs/core": "^2.11.8",
     "@xenova/transformers": "^2.15.1",
     "bootstrap": "^5.3.3",
-    "onnxruntime-web": "1.18.0-dev.20240430-204f1f59b9"
+    "onnxruntime-web": "1.20.0-dev.20241014-caa67439b5"
   }
 }

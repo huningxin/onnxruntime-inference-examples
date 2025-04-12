@@ -14,3 +14,19 @@ In this example, we load onnxruntime, create an inference session with a simple 
    ```
 
 2. open your browser and navigate to the URL.
+
+## Wasm example
+
+This example emulates the session inference path: JS (index_wasm.html) -> Wasm (inference.cpp) -> ORT JS API -> ORT Wasm.
+
+1. Compile inference.cpp by
+   ```sh
+   emcc inference.cpp -o inference.js -s EXPORTED_FUNCTIONS="['_run_session']" -s ASYNCIFY=1 -s MODULARIZE=1 -s EXPORT_NAME="createModule"
+   ```
+
+2. Start a server as above
+   ```sh
+   npx light-server -s . -p 8080
+   ```
+
+3. Open your and navigate to http://localhost:8080/index_wasm.html

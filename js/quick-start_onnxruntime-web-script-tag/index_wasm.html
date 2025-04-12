@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>ONNX Runtime JavaScript examples: call ORT from a Wasm module</title>
+    </head>
+    <body>
+        <!-- import ONNXRuntime Web from CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        <script src="inference.js"></script>
+        <script>
+        createModule().then(Module => {
+            console.log("[JS] Module loaded.");
+            
+            // Call the C++ function that triggers async session.run
+            Module._run_session();
+        });
+        </script>
+    </body>
+</html>
